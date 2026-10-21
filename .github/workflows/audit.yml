@@ -1,0 +1,30 @@
+name: audit
+
+# RustSec advisories against Cargo.lock: weekly, and whenever the lock changes.
+# The scheduled run opens an issue per new advisory.
+
+on:
+  schedule:
+    - cron: "17 6 * * 1"
+  push:
+    branches: [main]
+    paths: [Cargo.lock, Cargo.toml, .github/workflows/audit.yml]
+  pull_request:
+    paths: [Cargo.lock, Cargo.toml, .github/workflows/audit.yml]
+  workflow_dispatch:
+
+permissions:
+  contents: read
+  issues: write
+
+jobs:
+  audit:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v7
+      - name: Install the pinned toolchain
+        # The action runs cargo in this checkout, where rust-toolchain.toml selects the toolchain.
+        run: rustup toolchain install
+      - uses: rustsec/audit-check@v2
+        with:
+          token: ${{ secrets.GITHUB_TOKEN }}

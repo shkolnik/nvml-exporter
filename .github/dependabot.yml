@@ -1,10 +1,31 @@
+# Dependabot: weekly, grouped, with a cooldown so a fresh upstream release has
+# time to be noticed before it reaches this tree.
+#
+# Groups named "*-minor" hold minor and patch updates and are merged
+# automatically once CI is green (.github/workflows/dependabot-automerge.yml).
+# Major updates, and nvml-wrapper at any level, arrive as separate PRs for a
+# human: nvml-wrapper bumps must keep clippy.toml's disallowed setter list and
+# the read-only test complete (AGENTS.md §3).
 version: 2
 updates:
   - package-ecosystem: cargo
     directory: /
     schedule:
       interval: weekly
+    cooldown:
+      default-days: 7
+    groups:
+      cargo-minor:
+        update-types: [minor, patch]
+        exclude-patterns: [nvml-wrapper]
   - package-ecosystem: github-actions
     directory: /
     schedule:
       interval: weekly
+    cooldown:
+      default-days: 7
+    groups:
+      actions-minor:
+        update-types: [minor, patch]
+      actions-major:
+        update-types: [major]

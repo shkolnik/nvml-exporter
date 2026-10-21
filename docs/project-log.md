@@ -47,3 +47,13 @@ map and force-pushed to main with James's authorization; CI and release green on
 v0.1.1 (deb sha e6aa22b8…74d8, attestation verifies); pkg PR 24 merged and the redirect is served. The
 v0.1.0 release and tag deleted on GitHub. James decided no GitHub support purge of orphaned commits is
 needed. Agent-side work for this phase is complete; James enables branch protection next.
+
+## 2026-10-21T03:13Z — Dependabot PRs merged; dependency maintenance automated
+Commit: see this commit. Notes: Dependabot PRs 1 (actions/cache 5→6) and 2 (actions/download-artifact 7→8)
+rebase-merged after green CI; the dev release run on the second merge is the first exercise of
+download-artifact v8 in the publish job. Dependabot now groups minor/patch updates (cargo-minor,
+actions-minor, 7-day cooldown) and a workflow_run job merges those groups when CI passes on the PR's
+current head; majors and nvml-wrapper stay manual because a crate bump must keep the setter deny list
+complete. Weekly RustSec audit added; bug-report issue template asks for `nvml-exporter once` output.
+Branch rulesets reviewed: `main` blocks deletion and force-push only (direct push still works); the
+`v*` tag ruleset has no bypass actor, so James's next tag push will be refused until one is added.

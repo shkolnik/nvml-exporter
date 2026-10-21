@@ -1,0 +1,53 @@
+name: dependabot-automerge
+
+# Merges a Dependabot "*-minor" group PR once CI has passed on its current
+# head. Major bumps and nvml-wrapper bumps (see .github/dependabot.yml) never
+# match the title check and wait for a human.
+#
+# Runs on workflow_run rather than pull_request so it merges after CI, not
+# alongside it. A merge made with the default token does not start the main
+# push workflows (CI, dev release); set the AUTOMERGE_TOKEN secret to a
+# fine-grained PAT (contents and pull requests: write, this repo only) and
+# the merge runs them like any other push.
+
+on:
+  workflow_run:
+    workflows: [CI]
+    types: [completed]
+
+permissions:
+  contents: write
+  pull-requests: write
+
+jobs:
+  merge:
+    if: >-
+      github.event.workflow_run.conclusion == 'success' &&
+      github.event.workflow_run.event == 'pull_request' &&
+      github.event.workflow_run.actor.login == 'dependabot[bot]' &&
+      github.event.workflow_run.head_repository.full_name == github.repository
+    runs-on: ubuntu-latest
+    env:
+      GH_TOKEN: ${{ secrets.AUTOMERGE_TOKEN || github.token }}
+      GH_REPO: ${{ github.repository }}
+      HEAD_SHA: ${{ github.event.workflow_run.head_sha }}
+      HEAD_BRANCH: ${{ github.event.workflow_run.head_branch }}
+    steps:
+      - name: Merge if this is a minor group PR at the tested commit
+        run: |
+          pr=$(gh pr list --head "$HEAD_BRANCH" --state open \
+                 --json number,title,author,headRefOid \
+                 --jq '.[] | select(.author.login == "app/dependabot") | "\(.number)\t\(.headRefOid)\t\(.title)"')
+          if [ -z "$pr" ]; then
+            echo "no open Dependabot PR for $HEAD_BRANCH"; exit 0
+          fi
+          IFS=$'\t' read -r number head title <<< "$pr"
+          echo "PR #$number: $title"
+          if [ "$head" != "$HEAD_SHA" ]; then
+            echo "PR head moved since CI ran ($head != $HEAD_SHA); waiting for the next run"; exit 0
+          fi
+          case "$title" in
+            "Bump the cargo-minor group"*|"Bump the actions-minor group"*) ;;
+            *) echo "not a minor group: a human merges this one"; exit 0 ;;
+          esac
+          gh pr merge "$number" --rebase --delete-branch

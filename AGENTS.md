@@ -7,16 +7,21 @@
 
 ## 1. Resume note — keep current and short
 
-**Status (2026-10-21):** v0.1.1 released from the formal release workflow and served by pkg.
-Home-network and personal details scrubbed from the tree and the git history rewritten; the
-pre-scrub v0.1.0 release and tag are deleted. Branch protection on `main` is James's next step.
+**Status (2026-10-21):** v0.1.1 released and served by pkg; tree and history scrubbed; `main` and
+`v*` tags are protected by rulesets. Dependency maintenance is automated: Dependabot groups minor/patch
+updates and a workflow merges those groups once CI passes (`.github/dependabot.yml`,
+`.github/workflows/dependabot-automerge.yml`); major bumps and any `nvml-wrapper` bump wait for a human.
+A weekly RustSec audit opens issues (`.github/workflows/audit.yml`). A bug-report template asks for
+`nvml-exporter once` output.
 
 **Next:** nothing in flight. Candidates for 0.1.x: the deferred minors from the final review
-(logged in `docs/project-log.md`), CONTRIBUTING, an issue template asking for `nvml-exporter once`
-output, a CHANGELOG. Deployment automation lives in a separate, private repo and is not this
-repo's concern; this repo's agent stays focused on the utility itself (see §2).
+(logged in `docs/project-log.md`), CONTRIBUTING, a CHANGELOG. Deployment automation lives in a
+separate, private repo and is not this repo's concern; this repo's agent stays focused on the utility
+itself (see §2).
 
-**Blocked on James:** nothing. (Removing the v0.1.0 redirect from pkg is James's, in pkg.)
+**Blocked on James:** the `Version Tags` ruleset has no bypass actor, so `scripts/tag-release.sh` will be
+refused until the repository admin role is added as a bypass. Optional: an `AUTOMERGE_TOKEN` secret so
+auto-merged Dependabot PRs trigger CI and the dev build; enable Dependabot alerts in repo settings.
 
 Update this block at phase transitions and before handoff. Verify against files and git; never
 repeat completed work from memory.
