@@ -62,11 +62,13 @@ network; a thermal test harness; a future central Prometheus; a human with curl.
 
   ```
   ## 2026-10-21T14:05Z — Task 3 complete: config and allow-list
-  Commit: <sha>. Tests: 5 passed. Notes: <one to five lines: what was hard, what was decided
+  Commit: see this commit. Tests: 5 passed. Notes: <one to five lines: what was hard, what was decided
   and why, what the next task should know, anything James must do>.
   ```
 
-  Use `date -u +%Y-%m-%dT%H:%MZ` for the timestamp. Entries for a blocker or a question for
+  Use `date -u +%Y-%m-%dT%H:%MZ` for the timestamp. The sha is unknown when the entry is
+  written, so an entry committed with its task says `Commit: see this commit`; an entry committed
+  on its own names the sha it refers to. Entries for a blocker or a question for
   James start with `BLOCKED:` or `ASK JAMES:` after the timestamp so they are easy to grep.
   Commit the log with the task's commit (or on its own when the event is not a commit).
 - **Decisions survive sessions.** Rulings made while executing the plan go in the plan's

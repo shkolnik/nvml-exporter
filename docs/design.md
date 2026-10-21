@@ -111,7 +111,8 @@ per host through `listen` (James's one request on this spec), and the operator's
 - `GET /metrics`: `200 text/plain; version=0.0.4`, the exposition.
 - `GET /` and `GET /health`: `200`, one line (`nvml-exporter X.Y.Z, nvml_up 1|0`). `/health`
   is for a human; the controller reads `/metrics`.
-- Anything else: `404`; non-GET: `405`. A peer not in `readers` and not loopback: the
+- Anything else: `404`; non-GET: `405`; a malformed request line or a request larger than the
+  bound below: `400`. A peer not in `readers` and not loopback: the
   connection is closed immediately after accept, before reading, and counted in
   `nvml_exporter_rejected_connections_total`.
 - HTTP/1.0 semantics: read the request line and headers with a bounded reader (8 KiB, 2 s
@@ -135,7 +136,7 @@ Always present (no `gpu` label):
 | `nvml_exporter_build_info{version}` | gauge 1 | the binary's version |
 | `nvml_exporter_scrape_duration_seconds` | gauge | wall time of this collection |
 | `nvml_exporter_scrape_errors_total{metric}` | counter | NVML errors by metric name, excluding `NotSupported` (which is silent omission) |
-| `nvml_exporter_rejected_connections_total` | counter | peers refused by the allow-list |
+| `nvml_exporter_rejected_connections_total` | counter | peers refused by the allow-list; present in `serve`'s `/metrics` only, `once` has no listener and omits it |
 
 Per GPU (`gpu` label), omitted individually on `NotSupported`:
 
@@ -180,8 +181,8 @@ process lists, encoder/decoder utilization, NVLink, MIG, clock events beyond thr
 
 Package `nvml-exporter` (cargo-deb, `[package.metadata.deb]` like cfab): binary in
 `/usr/bin`, config in `/etc/nvml-exporter/config.toml` as a conffile with the loopback
-default, unit `nvml-exporter.service`, README to `/usr/share/doc`. `Depends: libc6` only
-(cargo-deb's `$auto`); NVML is a runtime `dlopen`, so the package does not depend on the
+default, unit `nvml-exporter.service`, README to `/usr/share/doc`. `Depends` from cargo-deb's
+`$auto` only (`libc6`, plus `libgcc-s1` if the binary links it); NVML is a runtime `dlopen`, so the package does not depend on the
 driver: on a host without it the service runs and serves `nvml_up 0`, which is the intended
 diagnostic. `Recommends: libnvidia-ml1`? No: it would pull a driver onto a host that has none.
 Not even Recommends.
@@ -340,7 +341,9 @@ The first release is gated on a spike on the VM, James operating:
 3. Footprint: `systemctl show -p MemoryCurrent`, binary size, `ldd` (expect libc, libgcc_s,
    libm only; `libnvidia-ml` is dlopened).
 4. With `listen` on the VM address and `readers = ["192.0.2.1"]`: curl from reader-host succeeds,
-   curl from the sandbox VM (192.0.2.53) is refused, loopback works.
+   curl from the sandbox VM (192.0.2.53) is refused, `127.0.0.1:9835` has no socket (there is
+   no second listener, §11.4), and curl from the VM to its own LAN address is refused too (the
+   peer is the VM's address, not loopback). `once` is the local diagnostic.
 
 ## 9. the operator's config repo integration (its own PR, after the first formal release)
 

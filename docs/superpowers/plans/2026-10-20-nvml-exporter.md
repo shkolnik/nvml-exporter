@@ -91,13 +91,13 @@ set_power_mizer_mode set_temperature_threshold set_vgpu_scheduler_state
 
 - [ ] **Step 2: Write `Cargo.toml`**
 
-`[package]`: `name = "nvml-exporter"`, `version = "0.1.0"`, `edition = "2024"`, `rust-version = "1.98"`, `description = "Small Prometheus exporter for NVIDIA GPUs over NVML"`, `license = "MIT OR Apache-2.0"`, `repository = "https://github.com/shkolnik/nvml-exporter"`. `[lib] name = "nvml_exporter"`, `path = "src/lib.rs"`; `[[bin]] name = "nvml-exporter"`, `path = "src/main.rs"`. Dependencies and dev-dependencies from the Tech Stack with the caret versions given there (`clap` features `["derive"]`, `serde` features `["derive"]`, `ctrlc` features `["termination"]`). Lints and release profile from Global Constraints; under `[lints.clippy]` add allows only for pedantic lints that fire on idiomatic code in this crate (`module_name_repetitions`, `missing_errors_doc`, `missing_panics_doc`, `must_use_candidate` are the expected set; add others only with a one-line reason). Leave `[package.metadata.deb]` for Task 5.
+`[package]`: `name = "nvml-exporter"`, `version = "0.1.0"`, `edition = "2024"`, `rust-version = "1.98"`, `description = "Small Prometheus exporter for NVIDIA GPUs over NVML"`, `license = "MIT OR Apache-2.0"`, `repository = "https://github.com/shkolnik/nvml-exporter"`. `[lib] name = "nvml_exporter"`, `path = "src/lib.rs"`; `[[bin]] name = "nvml-exporter"`, `path = "src/main.rs"`. Dependencies and dev-dependencies from the Tech Stack with the caret versions given there (`clap` features `["derive"]`, `serde` features `["derive"]`, `ctrlc` features `["termination"]`). Lints and release profile from Global Constraints; under `[lints.clippy]` add allows only for pedantic lints that fire on idiomatic code in this crate (`module_name_repetitions`, `missing_errors_doc`, `missing_panics_doc`, `must_use_candidate`, `cast_precision_loss`, `cast_possible_truncation`, `cast_sign_loss` are the expected set: the casts are inherent to turning NVML integers into `f64`; add others only with a one-line reason). Test files that compare floats start with `#![allow(clippy::float_cmp)]`. Leave `[package.metadata.deb]` for Task 5.
 
 - [ ] **Step 3: Write minimal `src/lib.rs` and `src/main.rs`**
 
 `src/lib.rs`: empty for now except a crate doc line. `src/main.rs`: clap `#[derive(Parser)] #[command(name = "nvml-exporter", version)] struct Cli { #[arg(long, global = true, default_value = "/etc/nvml-exporter/config.toml")] config: PathBuf, #[command(subcommand)] cmd: Option<Cmd> }` with `enum Cmd { Serve, Once, Check }`; `main` parses and, for now, prints the chosen subcommand name (default `Serve` when none) and exits 0. Task 5 fills it in.
 
-- [ ] **Step 4: Write the failing test `tests/no_setters.rs`**
+- [ ] **Step 4: Write the test `tests/no_setters.rs`** (it passes immediately; it is a guard, not TDD)
 
 ```rust
 const SETTERS: &[&str] = &[ /* the 33 names from Step 1 */ ];
@@ -117,7 +117,7 @@ fn sources_never_call_a_setter() {
         let path = entry.unwrap().path();
         let text = std::fs::read_to_string(&path).unwrap();
         for name in SETTERS {
-            assert!(!text.contains(&format!(".{name}(")), "{} calls {name}", path.display());
+            assert!(!text.contains(&format!("{name}(")), "{} calls {name}", path.display());
         }
     }
 }
@@ -153,7 +153,7 @@ git -c user.name=shkolnik-beep -c user.email=shkolnik-beep commit -m "Crate scaf
   pub struct MetricDef { pub name: &'static str, pub help: &'static str, pub kind: Kind, pub per_gpu: bool }
   pub static CATALOG: &[MetricDef];                       // the §4.4 tables, in that order
   pub fn find(name: &str) -> Option<&'static MetricDef>;
-  pub struct Sample { pub name: &'static str, pub labels: Vec<(&'static str, String)>, pub value: f64 }
+  #[derive(Debug, Clone, PartialEq)] pub struct Sample { pub name: &'static str, pub labels: Vec<(&'static str, String)>, pub value: f64 }   // Kind and MetricDef derive Debug, Clone, Copy, PartialEq
   impl Sample { pub fn global(name: &'static str, value: f64) -> Self;
                 pub fn gpu(name: &'static str, gpu: u32, value: f64) -> Self;   // labels = [("gpu", index)]
                 pub fn with_label(self, key: &'static str, value: impl Into<String>) -> Self; }
@@ -278,12 +278,12 @@ git -c user.name=shkolnik-beep -c user.email=shkolnik-beep commit -m "Metric cat
 **Interfaces:**
 - Produces:
   ```rust
-  pub struct Config { pub listen: SocketAddr, pub readers: AllowList, pub collect_pcie: bool }
-  pub struct AllowList(Vec<ipnet::IpNet>);
+  #[derive(Debug, Clone, PartialEq)] pub struct Config { pub listen: SocketAddr, pub readers: AllowList, pub collect_pcie: bool }
+  #[derive(Debug, Clone, PartialEq)] pub struct AllowList(Vec<ipnet::IpNet>);
   impl AllowList { pub fn parse(entries: &[String]) -> Result<Self, ConfigError>;
                    pub fn allows(&self, peer: IpAddr) -> bool;      // loopback always true; peer.to_canonical() before matching
                    pub fn entries(&self) -> &[IpNet]; }
-  pub enum ConfigError { Io { path: PathBuf, source: io::Error }, Toml(toml::de::Error), Reader { entry: String, reason: String } }  // impl Display + Error
+  #[derive(Debug)] pub enum ConfigError { Io { path: PathBuf, source: io::Error }, Toml(toml::de::Error), Listen { value: String, reason: String }, Reader { entry: String, reason: String } }  // impl Display + Error
   pub fn parse(text: &str) -> Result<Config, ConfigError>;
   pub fn load(path: &Path) -> Result<Config, ConfigError>;
   ```
@@ -345,7 +345,7 @@ Expected: compile error, `config` module missing.
 
 - [ ] **Step 3: Implement `src/config.rs`**
 
-Deserialize into a private `#[derive(Deserialize)] #[serde(deny_unknown_fields)] struct Raw { listen: Option<String>, readers: Option<Vec<String>>, collect_pcie: Option<bool> }`, then build `Config`. A reader entry is parsed as `IpAddr` first (wrapped with `IpNet::from`), then as `IpNet`; failure of both is `ConfigError::Reader`. A `listen` that does not parse as `SocketAddr` is reported as `ConfigError::Reader { entry: <the value>, reason: "listen must be address:port" }`. `ConfigError` needs `Debug` (the test uses `{other:?}`).
+Deserialize into a private `#[derive(Deserialize)] #[serde(deny_unknown_fields)] struct Raw { listen: Option<String>, readers: Option<Vec<String>>, collect_pcie: Option<bool> }`, then build `Config`. A reader entry is parsed as `IpAddr` first (wrapped with `IpNet::from`), then as `IpNet`; failure of both is `ConfigError::Reader`. A `listen` that does not parse as `SocketAddr` is `ConfigError::Listen { value, reason: "listen must be address:port" }`.
 
 - [ ] **Step 4: Run the tests**
 
@@ -377,7 +377,11 @@ git -c user.name=shkolnik-beep -c user.email=shkolnik-beep commit -m "Config fil
   ```rust
   pub struct Scrape { pub up: bool, pub samples: Vec<Sample> }   // samples include nvml_up, device_count, build_info, scrape_duration, scrape_errors_total
   pub trait Collector { fn collect(&mut self) -> Scrape; }
-  pub struct NvmlCollector { /* Option<Nvml>, collect_pcie, error counts, logged state */ }
+  pub struct NvmlCollector { nvml: Option<Nvml>, collect_pcie: bool, errors: ErrorCounts, logged_down: bool }
+  pub struct ErrorCounts(BTreeMap<&'static str, u64>);   // per-metric NVML error counts, process lifetime
+  // A Device<'_> borrows the Nvml it came from, so per-metric reads must not borrow self: `read` is a free
+  // function over `&mut ErrorCounts`, and collect() works from `let nvml = self.nvml.as_ref()?` with the
+  // device loop holding only `&Nvml` and `&mut self.errors` (disjoint fields).
   impl NvmlCollector { pub fn new(collect_pcie: bool) -> Self; }   // does not init; first collect() does
   impl Collector for NvmlCollector { ... }
   // pure helpers, pub for tests:
@@ -447,14 +451,17 @@ Expected: compile errors (`collector` missing).
 
 - [ ] **Step 4: Implement `src/collector.rs`**
 
-`collect()`: start an `Instant`; if `nvml` is `None`, try `Nvml::init()`; on error log at `warn` only if the previous state was up or this is the first attempt (keep a `logged_down: bool`), emit `nvml_up 0`, `nvml_device_count 0`, build info, duration, and the error counters, return. On success log at `info` the driver version and each device's name, once per transition. With NVML up: `device_count()`; for each index `device_by_index(i)`; if either errors, log `warn`, set `nvml = None` (dropping the handle; `Nvml::shutdown` consumes it, call it and ignore its result), emit the down scrape. Per device, read in §4.4 order through one helper:
+`collect()`: start an `Instant`; if `nvml` is `None`, try `Nvml::init()`; on error log at `warn` only if the previous state was up or this is the first attempt (keep a `logged_down: bool`), emit `nvml_up 0`, `nvml_device_count 0`, build info, duration, and the error counters, return. On success log at `info` the driver version and each device's name, once per transition. With NVML up: `device_count()`; for each index `device_by_index(i)`; if either errors, log `warn`, `if let Some(n) = self.nvml.take() { let _ = n.shutdown(); }`, emit the down scrape. Per device, read in §4.4 order through one helper:
 
 ```rust
-fn read<T>(&mut self, metric: &'static str, r: Result<T, NvmlError>) -> Option<T>
+fn read<T>(errors: &mut ErrorCounts, metric: &'static str, r: Result<T, NvmlError>) -> Option<T>
 // Ok → Some; Err(NotSupported) → None silently; other Err → None, errors[metric] += 1, log at debug
+// Structure collect() as: decide up/down and (re)init on `self`; then `let Some(nvml) = self.nvml.as_ref()`,
+// `let errors = &mut self.errors`, and a device loop using only `nvml` and `errors`; the device-level failure
+// is signalled out of the loop by a bool and handled afterwards with `self.nvml.take()`.
 ```
 
-Sources, from nvml-wrapper 0.13 (`Device` methods): `name()`, `uuid()`, `pci_info().bus_id`, `vbios_version()` → `nvml_gpu_info` labels (an individual failure leaves that label empty rather than dropping the info series); `temperature(TemperatureSensor::Gpu)`; `field_values_for(&[FieldId(nvml_wrapper::sys_exports::field_id::NVML_FI_DEV_MEMORY_TEMP)])` whose outer `Result` and inner `Vec<Result<FieldValueSample, _>>` and `sample.value: Result<SampleValue, _>` all go through `read`, with `SampleValue::U32`/`U64`/`I64`/`F64` converted to `f64` (match all four; no wildcard arm); `power_usage()` and `enforced_power_limit()` through `milli_to_unit`; `total_energy_consumption()` (u64 mJ) `/ 1000.0`; `clock_info(Clock::SM)` and `clock_info(Clock::Memory)` through `mhz_to_hz` (§4.4 says `Graphics|Memory`; `Clock::SM` is the builder's call here because the metric is named `nvml_sm_clock_hertz` and it is the clock `nvidia-smi` reports as SM; the spike compares it with `nvidia-smi -q -d CLOCK`); `utilization_rates()` `.gpu`/`.memory` through `percent_to_ratio`; `memory_info()` `.used`/`.total`; `current_throttle_reasons()` through `throttle_samples`; when `collect_pcie`, `pcie_throughput(PcieUtilCounter::Send|Receive)` (KB/s) `* 1000.0` with label `direction` = `tx`/`rx`; `fan_speed(0)` through `percent_to_ratio`; `is_in_persistent_mode()` as 0/1. Then `nvml_exporter_scrape_duration_seconds` and one `nvml_exporter_scrape_errors_total{metric}` per metric that has ever errored (counters persist for the process lifetime). `nvml_exporter_build_info{version}` uses `env!("CARGO_PKG_VERSION")`.
+Sources, from nvml-wrapper 0.13 (`Device` methods): `name()`, `uuid()`, `pci_info().bus_id`, `vbios_version()` → `nvml_gpu_info` labels (an individual failure leaves that label empty rather than dropping the info series); `temperature(TemperatureSensor::Gpu)`; `field_values_for(&[FieldId(nvml_wrapper::sys_exports::field_id::NVML_FI_DEV_MEMORY_TEMP)])` whose outer `Result` and inner `Vec<Result<FieldValueSample, _>>` and `sample.value: Result<SampleValue, _>` all go through `read`, with `SampleValue::U32`/`U64`/`I64`/`F64` converted to `f64` (match all four; no wildcard arm); `power_usage()` and `enforced_power_limit()` through `milli_to_unit`; `total_energy_consumption()` (u64 mJ) `/ 1000.0`; `clock_info(Clock::SM)` and `clock_info(Clock::Memory)` through `mhz_to_hz` (§4.4 says `Graphics|Memory`; `Clock::SM` is the builder's call here because the metric is named `nvml_sm_clock_hertz` and it is the clock `nvidia-smi` reports as SM; the spike compares it with `nvidia-smi -q -d CLOCK`); `utilization_rates()` `.gpu`/`.memory` through `percent_to_ratio`; `memory_info()` `.used`/`.total`; `current_throttle_reasons()` through `throttle_samples` (nine bits by design: the crate's `USER_DEFINED_CLOCKS` is an alias of `APPLICATIONS_CLOCKS_SETTING` and `NONE` is the empty mask; both are excluded on purpose); when `collect_pcie`, `pcie_throughput(PcieUtilCounter::Send|Receive)` (KB/s) `* 1000.0` with label `direction` = `tx`/`rx`; `fan_speed(0)` through `percent_to_ratio`; `is_in_persistent_mode()` as 0/1. Then `nvml_exporter_scrape_duration_seconds` and one `nvml_exporter_scrape_errors_total{metric}` per metric that has ever errored (counters persist for the process lifetime). `nvml_exporter_build_info{version}` uses `env!("CARGO_PKG_VERSION")`.
 
 - [ ] **Step 5: Run the tests**
 
@@ -584,7 +591,7 @@ restart-after-upgrade = true
 - [ ] **Step 7: Install cargo-deb and build the package**
 
 Run: `cargo +stable install --locked cargo-deb@3.8.0 && cargo deb && dpkg-deb -I target/debian/nvml-exporter_0.1.0-1_amd64.deb && dpkg-deb -c target/debian/nvml-exporter_0.1.0-1_amd64.deb && dpkg-deb -e target/debian/nvml-exporter_0.1.0-1_amd64.deb /tmp/nvml-ctl && cat /tmp/nvml-ctl/conffiles /tmp/nvml-ctl/postinst && ldd target/release/nvml-exporter && ls -l target/release/nvml-exporter`
-Expected: `Depends: libc6 (>= ...)` and `libgcc-s1` at most, no nvidia package; conffiles lists `/etc/nvml-exporter/config.toml`; postinst contains `systemctl enable` and `start` fragments; `ldd` shows libc, libgcc_s, libm only; binary under 2 MB stripped.
+Expected: `Depends` names only `libc6` and, if linked, `libgcc-s1`; no nvidia package; conffiles lists `/etc/nvml-exporter/config.toml`; postinst contains `systemctl enable` and `start` fragments; `ldd` shows libc, libgcc_s, libm only; binary under 2 MB stripped.
 
 - [ ] **Step 8: Append the task entry to `docs/project-log.md`** (timestamp, task number and name, test count, notes; write `Commit: see this commit` since the sha is not known yet), then include it in the commit.
 
@@ -612,7 +619,7 @@ This task stops for James. Give the commands below, wait for the pasted output, 
 
 - [ ] **Step 1: Hand over the deb**
 
-Tell James the path `target/debian/nvml-exporter_0.1.0-1_amd64.deb` on this sandbox and ask them to copy it to the VM (`scp` from their laptop through the sandbox, or whichever path they prefer) and run, on the VM:
+Tell James the absolute path of `target/debian/nvml-exporter_0.1.0-1_amd64.deb` on this sandbox and its sha256, and ask them how they want to carry it to the VM (the files here do not say how James reaches this sandbox; they do). Then ask them to run, on the VM:
 
 ```bash
 sudo dpkg -i nvml-exporter_0.1.0-1_amd64.deb
@@ -631,7 +638,7 @@ journalctl -u nvml-exporter -b --no-pager | tail -20
 curl -s http://127.0.0.1:9835/health
 ```
 
-`serve` is still a stub at this point, so the unit will be `failed` with exit 2 and the journal shows the stub's message: that proves the install enabled and started it. The hardening is tested now anyway: replace the stub check with `sudo systemd-run --unit nvml-spike -p DynamicUser=yes -p SupplementaryGroups=video -p DeviceAllow=/dev/nvidiactl -p DeviceAllow=/dev/nvidia0 -p DeviceAllow=char-nvidia -p DevicePolicy=closed -p ProtectSystem=strict -p MemoryDenyWriteExecute=yes -p NoNewPrivileges=yes --wait --pipe nvml-exporter once | head -3`. Expected: `nvml_up 1`. If `nvml_up 0`: read `journalctl -u nvml-spike`, then retry without `MemoryDenyWriteExecute`, then with a static user; record which combination works and change the unit (and §6) accordingly.
+`serve` is still a stub at this point, so the unit sits in `activating (auto-restart)` (exit 2 every 5 s under `Restart=on-failure`) and the journal repeats the stub's message: that proves the install enabled and started it. Have James `sudo systemctl stop nvml-exporter` to end the loop (it is re-enabled by the Task 7 deb upgrade). The hardening is tested now anyway, with the same properties as the unit: `sudo systemd-run --unit nvml-spike -p DynamicUser=yes -p SupplementaryGroups=video -p DeviceAllow=/dev/nvidiactl -p DeviceAllow=/dev/nvidia0 -p DeviceAllow=char-nvidia -p DevicePolicy=closed -p ProtectSystem=strict -p MemoryDenyWriteExecute=yes -p NoNewPrivileges=yes --wait --pipe nvml-exporter once | head -3`. Expected: `nvml_up 1`. If `nvml_up 0`: read `journalctl -u nvml-spike`, then retry without `MemoryDenyWriteExecute`, then with a static user; record which combination works and change the unit (and §6) accordingly.
 
 - [ ] **Step 3: Footprint**
 
@@ -642,9 +649,9 @@ ls -l /usr/bin/nvml-exporter; ldd /usr/bin/nvml-exporter
 
 Expected: a few MB RSS, well under 100 ms.
 
-- [ ] **Step 4: Error paths (Review Focus 5)**
+- [ ] **Step 4: Error paths (Review Focus 5): expected untestable on the card**
 
-Ask James for, with the exporter running later in Task 7's second spike round, `sudo systemctl restart nvidia-persistenced` and a scrape before and after; the `nvml_exporter_scrape_errors_total` and `nvml_up` lines tell whether the collector handled it. Record the outcome; if the driver cannot be made to fail safely on the card, say so in the log and leave the placeholders in `tests/live.rs` as documentation.
+The VM has no safe way to make NVML fail mid-scrape (the driver cannot be unloaded under a passed-through card without taking the VM down, and restarting `nvidia-persistenced` does not invalidate handles). Record that in `docs/spike-log.md` and leave the two named placeholders in `tests/live.rs` as documentation. If James knows a safe way, Task 7 step 6 is where to use it.
 
 - [ ] **Step 5: Append the task entry to `docs/project-log.md`** (timestamp, task number and name, test count, notes; write `Commit: see this commit` since the sha is not known yet), then include it in the commit.
 
@@ -837,7 +844,7 @@ curl -s http://127.0.0.1:9835/health; curl -s http://127.0.0.1:9835/metrics | gr
 systemctl show -p MemoryCurrent nvml-exporter
 ```
 
-Then with `/etc/nvml-exporter/config.toml` set to `listen = "<VM address>:9835"` and `readers = ["192.0.2.1"]` and `sudo systemctl restart nvml-exporter`: `curl` from reader-host succeeds, `curl --max-time 3` from the sandbox VM (192.0.2.53) fails, loopback `curl` from the VM to its own LAN address is refused (expected per §11.4), `curl -s http://127.0.0.1:9835/` from the VM fails to connect (no loopback socket when `listen` is the LAN address), and the journal shows one `rejected` line for 192.0.2.53. Then the Task 6 step 4 driver-restart check. Record in `docs/spike-log.md`.
+Then with `/etc/nvml-exporter/config.toml` set to `listen = "<VM address>:9835"` and `readers = ["192.0.2.1"]` and `sudo systemctl restart nvml-exporter`: `curl` from reader-host succeeds, `curl --max-time 3` from the sandbox VM (192.0.2.53) fails, `curl` from the VM to its own LAN address is refused (its peer is 192.0.2.10, not loopback; §11.4), `curl -s http://127.0.0.1:9835/` from the VM fails to connect (no loopback socket when `listen` is the LAN address), the journal shows one `rejected` line each for 192.0.2.53 and 192.0.2.10, and `/metrics` from reader-host shows `nvml_exporter_rejected_connections_total 2`. Record in `docs/spike-log.md`.
 
 - [ ] **Step 7: Append the task entry to `docs/project-log.md`** (timestamp, task number and name, test count, notes; write `Commit: see this commit` since the sha is not known yet), then include it in the commit.
 
@@ -862,13 +869,15 @@ git -c user.name=shkolnik-beep -c user.email=shkolnik-beep commit -m "HTTP serve
 
 - [ ] **Step 1: Write `.github/workflows/ci.yml`**
 
-Triggers: `push` to `main`, `pull_request`. One job `check`, `runs-on: ubuntu-latest`, `container: debian:trixie`. Steps: `apt-get update && apt-get install -y --no-install-recommends ca-certificates curl git build-essential pkg-config` (git before checkout, so checkout uses git and the container's `safe.directory` is set with `git config --global --add safe.directory "$GITHUB_WORKSPACE"`); `actions/checkout@v7`; install rustup with `curl --proto '=https' --tlsv1.2 -sSf https://sh.rustup.rs | sh -s -- -y --default-toolchain none --profile minimal` and `echo "$HOME/.cargo/bin" >> "$GITHUB_PATH"`; `rustup show` (installs the pinned toolchain from `rust-toolchain.toml`); `actions/cache@v5` on `~/.cargo/registry`, `~/.cargo/git`, `target` keyed on `${{ runner.os }}-trixie-${{ hashFiles('rust-toolchain.toml', 'Cargo.lock') }}`; `cargo fmt --check`; `cargo clippy --all-targets -- -D warnings`; `cargo test --locked`; on `pull_request` only: `cargo install --locked cargo-deb@3.8.0`, `cargo deb`, `dpkg-deb -I target/debian/*.deb`, `actions/upload-artifact@v7` with name `nvml-exporter-deb`.
+Triggers: `push` to `main`, `pull_request`. One job `check`, `runs-on: ubuntu-latest`, `container: debian:trixie`. Steps: `apt-get update && apt-get install -y --no-install-recommends ca-certificates curl git build-essential pkg-config` (git before checkout, so checkout uses git and the container's `safe.directory` is set with `git config --global --add safe.directory "$GITHUB_WORKSPACE"`); `actions/checkout@v7`; install rustup with `curl --proto '=https' --tlsv1.2 -sSf https://sh.rustup.rs | sh -s -- -y --default-toolchain none --profile minimal` and `echo "$HOME/.cargo/bin" >> "$GITHUB_PATH"`; `rustup toolchain install` with no arguments (reads `rust-toolchain.toml`; `rustup show` alone no longer auto-installs since rustup 1.28) then `rustup show`; `actions/cache@v5` on `~/.cargo/registry`, `~/.cargo/git`, `target` keyed on `${{ runner.os }}-trixie-${{ hashFiles('rust-toolchain.toml', 'Cargo.lock') }}`; `cargo fmt --check`; `cargo clippy --all-targets -- -D warnings`; `cargo test --locked`; on `pull_request` only: `cargo install --locked cargo-deb@3.8.0`, `cargo deb`, `dpkg-deb -I target/debian/*.deb`, `actions/upload-artifact@v7` with name `nvml-exporter-deb`.
 
 - [ ] **Step 2: Write `.github/workflows/release.yml`**
 
 Triggers: `push` to `main` and tags `v*`. Workflow-level `permissions: contents: write, id-token: write, attestations: write` (cfab's comment about job-level permissions replacing the block applies; copy it). `concurrency: group: release-${{ github.ref }}`. Two jobs:
 
 `build` (`container: debian:trixie`, same bootstrap as CI): `cargo test --locked`; resolve channel and version exactly as cfab's `meta` step (tag must equal `v<Cargo.toml version>`, dev version `${ver}~dev${GITHUB_RUN_NUMBER}+g${GITHUB_SHA::7}`); `cargo install --locked cargo-deb@3.8.0`; `cargo deb` (formal) or `cargo deb --deb-version ...` (dev); assemble `dist/`: formal = the deb plus `target/release/nvml-exporter` copied as `nvml-exporter-linux-x86_64`; dev = the deb as `nvml-exporter-dev_amd64.deb`; `actions/upload-artifact@v7` name `dist`; job outputs `channel`, `ver`, `deb_version`.
+
+Everything builds for the default glibc target: no `--target` flag anywhere, no musl, and none of cfab's container-image steps (cfab's `release.yml` builds musl and pushes a ghcr image; take only its `meta` step, its asset naming, and the publish steps named here).
 
 `publish` (`runs-on: ubuntu-latest`, `needs: build`, no container, so `gh` and the attestation action run on the runner): `actions/download-artifact@v7` into `dist/`; `actions/attest-build-provenance@v4` with `subject-path: dist/*`; formal: `sha256sum * > SHA256SUMS` inside `dist/`, `gh release create "$GITHUB_REF_NAME" dist/* --verify-tag --title "nvml-exporter $GITHUB_REF_NAME" --generate-notes`, then the pkg notify step copied from cfab (`continue-on-error: true`, `GH_TOKEN: ${{ secrets.PKG_TRIGGER_TOKEN }}`, the `--ref main` comment included, `gh workflow run check-releases.yml -R shkolnik/pkg --ref main`); dev: cfab's rolling `dev` prerelease steps with the asset `dist/nvml-exporter-dev_amd64.deb` and title `nvml-exporter dev (rolling)`.
 
@@ -902,7 +911,7 @@ Stops for James three times. Do not create the remote, set secrets, or merge any
 
 - [ ] **Step 1: Wait for the remote**
 
-James creates `github.com/shkolnik/nvml-exporter` (empty, no README) and adds the agent as collaborator, sets the `PKG_TRIGGER_TOKEN` secret and the Actions permission to allow `GITHUB_TOKEN` to write releases (as in cfab). Then: `git remote add origin git@github.com:shkolnik/nvml-exporter.git && git push -u origin main`. Confirm the CI and the `release` (dev channel) runs are green at `https://github.com/shkolnik/nvml-exporter/actions`; fix any container bootstrap issue in a commit on `main` (James has said how PRs work in this repo by then; follow that).
+James creates `github.com/shkolnik/nvml-exporter` (empty, no README) and adds the agent as collaborator, sets the `PKG_TRIGGER_TOKEN` secret and the Actions permission to allow `GITHUB_TOKEN` to write releases (as in cfab). Ask James to confirm the remote exists and how changes land after the first push (direct to `main`, or PR-only as in their other repos); only then `git remote add origin git@github.com:shkolnik/nvml-exporter.git && git push -u origin main`. Confirm the CI and the `release` (dev channel) runs are green at `https://github.com/shkolnik/nvml-exporter/actions`; fix any container bootstrap issue following the flow James chose.
 
 - [ ] **Step 2: Confirm the dev deb**
 
@@ -916,7 +925,7 @@ Ask James to install `nvml-exporter-dev_amd64.deb` from the rolling `dev` releas
 
 - [ ] **Step 5: Update the resume note and commit**
 
-`AGENTS.md` §1: released v0.1.0, pkg onboarding state, next = the operator's config repo integration plan (design §9) in the the operator's config repo repo. Commit and push.
+`AGENTS.md` §1: released v0.1.0, pkg onboarding state, the flow James chose for landing changes, next = the operator's config repo integration plan (design §9) in the the operator's config repo repo. Commit and land it by that flow.
 
 ---
 
