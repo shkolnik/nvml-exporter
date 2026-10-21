@@ -1,0 +1,4 @@
+# /etc/nvml-exporter/config.toml
+listen       = "127.0.0.1:9835"   # address:port; the package ships this loopback default
+readers      = []                 # IPv4/IPv6 addresses or CIDRs allowed besides loopback
+collect_pcie = false              # PCIe throughput costs a 20 ms NVML sampling call per scrape

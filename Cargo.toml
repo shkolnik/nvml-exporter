@@ -7,6 +7,29 @@ description = "Small Prometheus exporter for NVIDIA GPUs over NVML"
 license = "MIT OR Apache-2.0"
 repository = "https://github.com/shkolnik/nvml-exporter"
 
+[package.metadata.deb]
+maintainer = "James Shkolnik <jshkolnik@gmail.com>"
+copyright = "2026 James Shkolnik"
+extended-description = "Reads one NVIDIA GPU through NVML (libnvidia-ml.so.1 from the installed driver, loaded at runtime) and serves Prometheus text on its own port. Read-only by construction; without a driver it serves nvml_up 0."
+section = "net"
+priority = "optional"
+depends = "$auto"
+assets = [
+    ["target/release/nvml-exporter", "usr/bin/", "755"],
+    ["README.md", "usr/share/doc/nvml-exporter/", "644"],
+    ["docs/metrics.md", "usr/share/doc/nvml-exporter/", "644"],
+    ["packaging/deb/config.toml", "etc/nvml-exporter/config.toml", "644"],
+]
+conf-files = ["/etc/nvml-exporter/config.toml"]
+maintainer-scripts = "packaging/deb"
+
+[package.metadata.deb.systemd-units]
+unit-scripts = "packaging/deb"
+unit-name = "nvml-exporter"
+enable = true
+start = true
+restart-after-upgrade = true
+
 [lib]
 name = "nvml_exporter"
 path = "src/lib.rs"
