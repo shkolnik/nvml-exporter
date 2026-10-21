@@ -44,6 +44,10 @@ fn live_once_reports_up_and_thermals() {
         .count();
     assert_eq!(throttle, 9, "{text}");
     assert!(!has("nvml_fan_speed_ratio"), "V100 has no fan\n{text}");
+    assert!(
+        !has("nvml_exporter_scrape_errors_total{metric=\"nvml_fan_speed_ratio\""),
+        "fanless card counted as a fan error\n{text}"
+    );
 }
 
 /// Placeholder: an NVML error other than `NotSupported` is counted in

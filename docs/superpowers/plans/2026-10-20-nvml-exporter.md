@@ -933,7 +933,9 @@ Ask James to install `nvml-exporter-dev_amd64.deb` from the rolling `dev` releas
 
 Rulings made during execution go here, newest last: `Task N: <what> — <why> — <cost if wrong>`.
 
-- (none yet)
+- Task 6: the agent ran the spike itself over temporary root SSH on VM `gpu-host`, granted by James for this spike only (VM rebuilt afterwards); AGENTS.md §3's rule stands — faster, exact output instead of paste round-trips — anything run on the VM is discarded by the rebuild.
+- Task 6: no GPU load generated; §8.1 "sw_power_cap 1 under load" deferred, the bitmask path verified by gpu_idle 1 on the idle card — the fan is hard-coded to 10–15 % duty and James must approve any load beforehand — a wrong reason-to-bit mapping for sw_power_cap would go unnoticed until a load run.
+- Task 6: fan read gated on `Device::num_fans()` (errors counted under `nvml_fan_speed_ratio`; 0 fans emits and counts nothing; >0 reads `fan_speed(0)` as before) — on the V100 `fan_speed(0)` returns InvalidArgument, which `read()` counted as a scrape error for a fanless card — if a card reports 0 fans but has a readable fan, its speed is silently omitted.
 
 ## Self-review notes (2026-10-20, author)
 

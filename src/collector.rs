@@ -236,15 +236,18 @@ fn device_samples(
             }
         }
     }
-    let fan = device.fan_speed(0);
-    gauge(
-        errors,
-        out,
-        i,
-        "nvml_fan_speed_ratio",
-        fan,
-        percent_to_ratio,
-    );
+    // A fanless card (the V100) answers fan_speed(0) with InvalidArgument, not NotSupported.
+    if read(errors, "nvml_fan_speed_ratio", device.num_fans()).is_some_and(|n| n > 0) {
+        let fan = device.fan_speed(0);
+        gauge(
+            errors,
+            out,
+            i,
+            "nvml_fan_speed_ratio",
+            fan,
+            percent_to_ratio,
+        );
+    }
     let persistence = device.is_in_persistent_mode();
     gauge(
         errors,

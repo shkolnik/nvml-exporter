@@ -153,7 +153,7 @@ Per GPU (`gpu` label), omitted individually on `NotSupported`:
 | `nvml_memory_used_bytes`, `nvml_memory_total_bytes` | `memory_info()` | |
 | `nvml_throttle_reason{reason}` | `current_throttle_reasons()` bitmask | one 0/1 series per known bit: `gpu_idle`, `applications_clocks_setting`, `sw_power_cap`, `hw_slowdown`, `sync_boost`, `sw_thermal_slowdown`, `hw_thermal_slowdown`, `hw_power_brake_slowdown`, `display_clock_setting`; all bits emitted on every scrape so absence of a reason is a 0, not a gap |
 | `nvml_pcie_throughput_bytes_per_second{direction}` | `pcie_throughput(Send|Receive)` × 1000 | 20 ms sampling call inside NVML; **off by default** via `collect_pcie = false` because it adds latency to every scrape |
-| `nvml_fan_speed_ratio` | `fan_speed(0)` / 100 | omitted on the V100 (no fan, NotSupported); present for cards that have one |
+| `nvml_fan_speed_ratio` | `fan_speed(0)` / 100 | omitted on the V100: it reports zero fans via `num_fans()` and `fan_speed(0)` returns InvalidArgument there (not NotSupported), hence the read is gated on `num_fans() > 0`; present for cards that have one |
 | `nvml_persistence_mode` | `is_in_persistent_mode()` | 0/1; informs the open persistenced question |
 
 Not collected in v1 (listed so nobody adds them silently): ECC counters, retired pages,
@@ -231,6 +231,7 @@ device-node and group requirements of `libnvidia-ml` under `DynamicUser` are unv
 spike confirms them on the VM and the plan adjusts the unit (first fallback: a static
 `nvml-exporter` system user in `video`; last resort: drop `MemoryDenyWriteExecute`, which the
 CUDA/NVML libraries sometimes need).
+Verified on the V100 2026-10-21 (spike): the unit works as written under DynamicUser; no fallback was needed.
 
 ## 7. Repository
 

@@ -7,13 +7,14 @@
 
 ## 1. Resume note — keep current and short
 
-**Status (2026-10-21):** Tasks 1–4 of the plan complete (scaffold, catalog/exposition, config,
-collector); remote `github.com/shkolnik/nvml-exporter` exists, `origin` is set, changes land by
+**Status (2026-10-21):** Tasks 1–6 of the plan complete; the V100 spike passed and the hardened
+unit ships unchanged (`docs/spike-log.md`); remote `github.com/shkolnik/nvml-exporter` exists, `origin` is set, changes land by
 direct push to `main`, one commit per approved task.
 
-**Next:** Task 5 (CLI once/check, deb packaging), then the V100 spike (Task 6, James operates).
+**Next:** Task 7 (HTTP server + `serve`; second spike round on the VM while root SSH lasts),
+then Task 8 CI/release, then Task 9 release, gated on James.
 
-**Blocked on James:** nothing until Task 6.
+**Blocked on James:** nothing until Task 9 (repo secret + Actions permissions).
 
 Update this block at phase transitions and before handoff. Verify against files and git; never
 repeat completed work from memory.
@@ -41,6 +42,7 @@ network; a thermal test harness; a future central Prometheus; a human with curl.
 - **James's infrastructure is James's.** The V100 lives in the GPU VM `gpu-host` (Debian 13) on hypervisor
   node `reader-host`. Never run anything against those hosts; give James exact commands and analyze
   what they paste back. A locally built deb reaches the VM by James's scp.
+  Exception 2026-10-21: James granted temporary root SSH on gpu-host for the spike; the VM is rebuilt afterwards.
 - **Read-only by construction.** The binary must never call an NVML setter. `clippy.toml`
   disallows every `nvml_wrapper::Device` `set_`/`reset_`/`clear_` method and a test greps for
   them; keep both complete when the crate is bumped.
@@ -81,7 +83,7 @@ network; a thermal test harness; a future central Prometheus; a human with curl.
   driver here: every test that needs a GPU is `#[ignore]` and runs only on the VM.
 - Network: crates.io is reachable for `cargo add`/`cargo build`.
 - The VM: Tesla V100-PCIE-32GB, driver 550.163.01 from Debian (`libnvidia-ml1`), persistence
-  daemon present, address 192.0.2.10 (DHCP), reader = reader-host at 192.0.2.1, a second VM
+  daemon present, address 192.0.2.10 (DHCP; was .63; reachable as `gpu-host.example` for the spike only), reader = reader-host at 192.0.2.1, a second VM
   (sandbox) at 192.0.2.53 serves as the "not allowed" peer in tests. Power cap defaults to
   250 W after a rebuild; James sets 150/175 W by hand before any load run.
 
