@@ -11,8 +11,9 @@
 workflow; pkg onboarding pending James's first `.redirect` PR; root SSH on gpu-host no longer needed
 (James rebuilds the VM).
 
-**Next:** 0.1.1 with the final-review fixes (committed, awaiting James's tag), then the the operator's config repo
-integration plan (design §9) in the the operator's config repo repo: a separate plan, separate repo.
+**Next:** 0.1.1 with the final-review fixes (committed, awaiting James's tag). The the operator's config repo
+integration (design §9) is being done by another agent in the the operator's config repo repo; this repo's agent
+stays focused on the utility itself (see §2 on its intended audience).
 
 **Blocked on James:** the pkg `.redirect` PR; the v0.1.1 tag (James tags; agents never push tags).
 
@@ -29,6 +30,16 @@ authority and the plan argues from it.
 
 Consumers, in order: a fan controller on the hypervisor host `reader-host` polling at ~1 Hz over the
 network; a thermal test harness; a future central Prometheus; a human with curl.
+
+**Intended audience and maintenance posture.** James intends this to become an open-source
+project that other people run, on other NVIDIA cards, not only the lab's V100. Maintaining it is a
+real responsibility: treat the metric names, labels, config keys, CLI, exit codes and HTTP behavior
+as a public interface (change them deliberately, document them, bump the version); prefer NVML
+semantics that hold across GPU generations over V100-specific assumptions (e.g. the `num_fans`
+gate, field-value reads that may be `NotSupported`); keep the deb installable on a plain Debian
+stable host without NVIDIA's apt repo; keep the read-only guarantee absolute; and write the README,
+`docs/metrics.md` and release notes for a stranger. Hardware we cannot test on is covered by
+`#[ignore]` live tests and by asking users for `nvml-exporter once` output in bug reports.
 
 ## 3. Working agreement
 
