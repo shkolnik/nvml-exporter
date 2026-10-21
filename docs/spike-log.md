@@ -1,15 +1,15 @@
 # Spike log: nvml-exporter on the V100
 
-Date: 2026-10-21 (VM clock Oct 20 19:50 local time). Plan Task 6; expectations from `docs/design.md` §8.
+Date: 2026-10-21 (about 00:50Z). Plan Task 6; expectations from `docs/design.md` §8.
 
 Deb: `nvml-exporter_0.1.0-1_amd64.deb`, sha256
 `2beeb6d4051d05d8d9a30a4296f920cdc48bc7277fbc9f594e9867ca5262bd24`. `dpkg -i` clean; postinst
 created the `multi-user.target.wants` symlink.
 
-How it was run: by the agent over temporary root SSH on the GPU VM `gpu-host`, a one-time exception to
-AGENTS.md §3 authorized by James for this spike; the VM is rebuilt afterwards.
+How it was run: by the agent on the GPU host (a Debian 13 VM with the card passed through), with
+James's one-time authorization for this spike; the host is rebuilt afterwards.
 
-Host: Debian 13.7, eth0 192.0.2.10/24 (DHCP; lease moved from .63), Tesla V100-PCIE-32GB
+Host: Debian 13.7, eth0 192.0.2.10/24, Tesla V100-PCIE-32GB
 UUID GPU-00000000-0000-0000-0000-000000000000, `libnvidia-ml1` 550.163.01-2, nvidia-persistenced
 active. `/dev/nvidia0` and `/dev/nvidiactl` are `crw-rw-rw- root:root` (195,0 / 195,255); group
 `video` = gid 44.
@@ -85,12 +85,11 @@ placeholders in `tests/live.rs` stay as documentation.
 - Fan: the read is gated on `Device::num_fans()` (errors there counted under
   `nvml_fan_speed_ratio`); 0 fans emits and counts nothing. `tests/live.rs` asserts no fan scrape
   error. To be confirmed on the card in Task 7's spike round.
-- No load generated: the fan is hard-coded to 10–15 % duty and James must approve any load. The
+- No load generated: James must approve any load run. The
   §8.1 `sw_power_cap 1` under load check is deferred; gpu_idle 1 verified the bitmask path.
-- VM address is now 192.0.2.10 (DHCP); AGENTS.md §4 updated.
-- Allow-list test from reader-host (192.0.2.1) and the sandbox VM (192.0.2.53), plus the `ss`
+- Allow-list test from the reader host (192.0.2.1) and a non-reader host (192.0.2.53), plus the `ss`
   listener check, deferred to Task 7 step 6 (needs `serve`).
-- §8.4 verified end to end in round 2: reader-host served, the sandbox VM and the VM's own LAN address
+- §8.4 verified end to end in round 2: the reader host served, the non-reader host and the VM's own LAN address
   refused, no loopback socket when `listen` is the LAN address.
 - The allow-list rejects before reading and logs once per peer address at info.
 - The ~55 ms `/metrics` latency is the 50 ms accept-poll interval: acceptable for the 1 Hz
@@ -99,8 +98,8 @@ placeholders in `tests/live.rs` stay as documentation.
 
 ## Round 2 — HTTP server (Task 7)
 
-2026-10-21 (VM clock Oct 20 20:01–20:04 local time). Run by the controller over root SSH on gpu-host; the
-reader-host curl run by James. Deb from commit e6c6f7f, sha256
+2026-10-21 (about 01:01–01:04Z). Run by the controller on the GPU host; the reader-host curl
+run by James. Deb from commit e6c6f7f, sha256
 `91f38af72876717eea274afe5ee7b3f99c05eb64339d1a63c50cc740fbe85b8b` (version still 0.1.0-1).
 
 ### A. Upgrade and service under the hardened unit, shipped loopback config
@@ -127,8 +126,8 @@ reader-host curl run by James. Deb from commit e6c6f7f, sha256
   restart: active; journal `listening on 192.0.2.10:9835, readers [192.0.2.1/32], collect_pcie false`.
 - `ss -ltn`: only `192.0.2.10:9835`; no loopback socket.
 - Peers:
-  - reader-host (192.0.2.1): `nvml-exporter 0.1.0, nvml_up 1`, exit 0.
-  - sandbox (192.0.2.53): empty, curl exit 56; journal
+  - reader host (192.0.2.1): `nvml-exporter 0.1.0, nvml_up 1`, exit 0.
+  - non-reader host (192.0.2.53): empty, curl exit 56; journal
     `rejected connection from 192.0.2.53 (not in readers)`.
   - loopback from the VM (`127.0.0.1:9835`): curl exit 7, connection refused (no socket).
   - the VM to its own LAN address: curl exit 56 (closed before any response); journal, once:

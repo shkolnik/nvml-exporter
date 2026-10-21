@@ -23,8 +23,8 @@
 - Logging to stderr, level from `NVML_EXPORTER_LOG` (default `info`); state changes only, no per-scrape lines at info.
 - Package `nvml-exporter`: `/usr/bin/nvml-exporter`, conffile `/etc/nvml-exporter/config.toml` (loopback default), unit `nvml-exporter.service` as in §6, `Depends: libc6` only (cargo-deb `$auto`), enable + start on install, restart after upgrade.
 - `[profile.release]`: `opt-level = "s"`, `lto = true`, `codegen-units = 1`, `panic = "abort"`, `strip = true`.
-- Git: identity `shkolnik-beep <shkolnik-beep>` via `git -c`; no AI attribution trailers of any kind; commits on local `main`; no remote until James says it exists (Task 9).
-- James operates the VM and reader-host; the plan gives commands and reads pasted output. Never run anything against those hosts.
+- Git: identity `shkolnik-beep` (the maintainer's bot identity; address kept outside the repo) via `git -c`; no AI attribution trailers of any kind; commits on local `main`; no remote until James says it exists (Task 9).
+- James operates the GPU host and the reader host; the plan gives commands and reads pasted output. Never run anything against those hosts.
 - Before every commit: `cargo fmt --check && cargo clippy --all-targets -- -D warnings && cargo test --locked`.
 - Every task ends with an entry appended to `docs/project-log.md` (format in `AGENTS.md` §3), committed with the task; unexpected challenges and rulings get their own entries as they happen.
 
@@ -134,7 +134,7 @@ Expected: all green; `cargo run -- --version` prints `nvml-exporter 0.1.0`. Rust
 
 ```bash
 git add Cargo.toml Cargo.lock rust-toolchain.toml rustfmt.toml clippy.toml src tests docs/project-log.md
-git -c user.name=shkolnik-beep -c user.email=shkolnik-beep commit -m "Crate scaffold: pinned toolchain, lints, NVML setter ban"
+git -c user.name=shkolnik-beep -c user.email=<bot address> commit -m "Crate scaffold: pinned toolchain, lints, NVML setter ban"
 ```
 
 ---
@@ -263,7 +263,7 @@ Expected: PASS; `docs/metrics.md` exists with 23 rows.
 ```bash
 cargo fmt --check && cargo clippy --all-targets -- -D warnings && cargo test --locked
 git add src/catalog.rs src/expo.rs src/lib.rs tests/expo.rs tests/catalog.rs docs/metrics.md docs/project-log.md
-git -c user.name=shkolnik-beep -c user.email=shkolnik-beep commit -m "Metric catalog and Prometheus text exposition"
+git -c user.name=shkolnik-beep -c user.email=<bot address> commit -m "Metric catalog and Prometheus text exposition"
 ```
 
 ---
@@ -359,7 +359,7 @@ Expected: PASS.
 ```bash
 cargo fmt --check && cargo clippy --all-targets -- -D warnings && cargo test --locked
 git add src/config.rs src/lib.rs tests/config.rs docs/project-log.md
-git -c user.name=shkolnik-beep -c user.email=shkolnik-beep commit -m "Config file and reader allow-list"
+git -c user.name=shkolnik-beep -c user.email=<bot address> commit -m "Config file and reader allow-list"
 ```
 
 ---
@@ -480,7 +480,7 @@ Expected: PASS; an unused-module warning from `common` in crates that do not use
 ```bash
 cargo fmt --check && cargo clippy --all-targets -- -D warnings && cargo test --locked
 git add src/collector.rs src/lib.rs tests/collector.rs tests/common docs/project-log.md
-git -c user.name=shkolnik-beep -c user.email=shkolnik-beep commit -m "NVML collector: init once, retry per scrape, omit unsupported fields"
+git -c user.name=shkolnik-beep -c user.email=<bot address> commit -m "NVML collector: init once, retry per scrape, omit unsupported fields"
 ```
 
 ---
@@ -600,7 +600,7 @@ Expected: `Depends` names only `libc6` and, if linked, `libgcc-s1`; no nvidia pa
 ```bash
 cargo fmt --check && cargo clippy --all-targets -- -D warnings && cargo test --locked
 git add src/main.rs Cargo.toml Cargo.lock packaging tests/cli.rs tests/live.rs docs/project-log.md
-git -c user.name=shkolnik-beep -c user.email=shkolnik-beep commit -m "CLI once/check, Debian packaging with hardened unit"
+git -c user.name=shkolnik-beep -c user.email=<bot address> commit -m "CLI once/check, Debian packaging with hardened unit"
 ```
 
 ---
@@ -661,7 +661,7 @@ Write `docs/spike-log.md` with the date, the deb version, each command and its o
 
 ```bash
 git add docs/spike-log.md docs/design.md packaging docs/superpowers/plans/2026-10-20-nvml-exporter.md docs/project-log.md
-git -c user.name=shkolnik-beep -c user.email=shkolnik-beep commit -m "Spike on the V100: NVML fields and unit hardening verified"
+git -c user.name=shkolnik-beep -c user.email=<bot address> commit -m "Spike on the V100: NVML fields and unit hardening verified"
 ```
 
 ---
@@ -844,7 +844,7 @@ curl -s http://127.0.0.1:9835/health; curl -s http://127.0.0.1:9835/metrics | gr
 systemctl show -p MemoryCurrent nvml-exporter
 ```
 
-Then with `/etc/nvml-exporter/config.toml` set to `listen = "<VM address>:9835"` and `readers = ["192.0.2.1"]` and `sudo systemctl restart nvml-exporter`: `curl` from reader-host succeeds, `curl --max-time 3` from the sandbox VM (192.0.2.53) fails, `curl` from the VM to its own LAN address is refused (its peer is 192.0.2.10, not loopback; §11.4), `curl -s http://127.0.0.1:9835/` from the VM fails to connect (no loopback socket when `listen` is the LAN address), the journal shows one `rejected` line each for 192.0.2.53 and 192.0.2.10, and `/metrics` from reader-host shows `nvml_exporter_rejected_connections_total 2`. Record in `docs/spike-log.md`.
+Then with `/etc/nvml-exporter/config.toml` set to `listen = "<VM address>:9835"` and `readers = ["192.0.2.1"]` and `sudo systemctl restart nvml-exporter`: `curl` from the reader host succeeds, `curl --max-time 3` from a non-reader host (192.0.2.53) fails, `curl` from the VM to its own LAN address is refused (its peer is 192.0.2.10, not loopback; §11.4), `curl -s http://127.0.0.1:9835/` from the VM fails to connect (no loopback socket when `listen` is the LAN address), the journal shows one `rejected` line each for 192.0.2.53 and 192.0.2.10, and `/metrics` from the reader host shows `nvml_exporter_rejected_connections_total 2`. Record in `docs/spike-log.md`.
 
 - [ ] **Step 7: Append the task entry to `docs/project-log.md`** (timestamp, task number and name, test count, notes; write `Commit: see this commit` since the sha is not known yet), then include it in the commit.
 
@@ -853,7 +853,7 @@ Then with `/etc/nvml-exporter/config.toml` set to `listen = "<VM address>:9835"`
 ```bash
 cargo fmt --check && cargo clippy --all-targets -- -D warnings && cargo test --locked
 git add src/http.rs src/main.rs src/lib.rs tests/http.rs tests/common docs/spike-log.md docs/project-log.md
-git -c user.name=shkolnik-beep -c user.email=shkolnik-beep commit -m "HTTP server with reader allow-list; serve subcommand"
+git -c user.name=shkolnik-beep -c user.email=<bot address> commit -m "HTTP server with reader allow-list; serve subcommand"
 ```
 
 ---
@@ -897,7 +897,7 @@ Run: the YAML and bash checks from the Interfaces block; `cargo test --locked` s
 
 ```bash
 git add .github scripts README.md docs/project-log.md
-git -c user.name=shkolnik-beep -c user.email=shkolnik-beep commit -m "CI and release workflows (debian:trixie), dependabot, tag script, README"
+git -c user.name=shkolnik-beep -c user.email=<bot address> commit -m "CI and release workflows (debian:trixie), dependabot, tag script, README"
 ```
 
 ---
@@ -915,7 +915,7 @@ James creates `github.com/shkolnik/nvml-exporter` (empty, no README) and adds th
 
 - [ ] **Step 2: Confirm the dev deb**
 
-Ask James to install `nvml-exporter-dev_amd64.deb` from the rolling `dev` release on the VM over the locally built one and paste `nvml-exporter --version`, `systemctl status nvml-exporter --no-pager` and a `/metrics` scrape from reader-host. Expected: same results as the second spike round.
+Ask James to install `nvml-exporter-dev_amd64.deb` from the rolling `dev` release on the VM over the locally built one and paste `nvml-exporter --version`, `systemctl status nvml-exporter --no-pager` and a `/metrics` scrape from the reader host. Expected: same results as the second spike round.
 
 - [ ] **Step 3: Tag v0.1.0**
 
@@ -925,7 +925,7 @@ Ask James to install `nvml-exporter-dev_amd64.deb` from the rolling `dev` releas
 
 - [ ] **Step 5: Update the resume note and commit**
 
-`AGENTS.md` §1: released v0.1.0, pkg onboarding state, the flow James chose for landing changes, next = the operator's config repo integration plan (design §9) in the the operator's config repo repo. Commit and land it by that flow.
+`AGENTS.md` §1: released v0.1.0, pkg onboarding state, the flow James chose for landing changes, next = deployment integration (design §9) in the operator's configuration-management repo. Commit and land it by that flow.
 
 ---
 
@@ -933,10 +933,10 @@ Ask James to install `nvml-exporter-dev_amd64.deb` from the rolling `dev` releas
 
 Rulings made during execution go here, newest last: `Task N: <what> — <why> — <cost if wrong>`.
 
-- Task 6: the agent ran the spike itself over temporary root SSH on VM `gpu-host`, granted by James for this spike only (VM rebuilt afterwards); AGENTS.md §3's rule stands — faster, exact output instead of paste round-trips — anything run on the VM is discarded by the rebuild.
-- Task 6: no GPU load generated; §8.1 "sw_power_cap 1 under load" deferred, the bitmask path verified by gpu_idle 1 on the idle card — the fan is hard-coded to 10–15 % duty and James must approve any load beforehand — a wrong reason-to-bit mapping for sw_power_cap would go unnoticed until a load run.
+- Task 6: the agent ran the spike itself on the GPU host, granted by James for this spike only (VM rebuilt afterwards); AGENTS.md §3's rule stands — faster, exact output instead of paste round-trips — anything run on the VM is discarded by the rebuild.
+- Task 6: no GPU load generated; §8.1 "sw_power_cap 1 under load" deferred, the bitmask path verified by gpu_idle 1 on the idle card — James must approve any load beforehand — a wrong reason-to-bit mapping for sw_power_cap would go unnoticed until a load run.
 - Task 6: fan read gated on `Device::num_fans()` (errors counted under `nvml_fan_speed_ratio`; 0 fans emits and counts nothing; >0 reads `fan_speed(0)` as before) — on the V100 `fan_speed(0)` returns InvalidArgument, which `read()` counted as a scrape error for a fanless card — if a card reports 0 fans but has a readable fan, its speed is silently omitted.
 
 ## Self-review notes (2026-10-20, author)
 
-Spec coverage: §4.1 CLI → Tasks 5, 7; §4.2 config → Task 3; §4.3 HTTP → Task 7; §4.4 catalog → Tasks 2, 4; §5 behavior → Tasks 4, 7; §6 packaging → Task 5 (unit verified Task 6); §7 repo, lints, CI, release → Tasks 1, 8; §7a ordering → Task 6 placed between 5 and 7; §8 spike → Tasks 6 and 7 step 6; §9 the operator's config repo → out of scope by §7a; §10 builder choices → made in the Interfaces blocks (Sample shape, `env_logger`, `ctrlc`, addresses-only readers, generated `docs/metrics.md`, two-job release so `gh` runs outside the container); §11 → Global Constraints. Type names used across tasks: `Sample`, `Scrape`, `Collector`, `AllowList`, `Options`, `Outcome`, `FakeCollector` are defined once and reused by name. Known weak spots: the no-GPU sandbox cannot exercise NVML error paths (Review Focus 5 is verified by hand in Task 6/7 and documented); the catalog row count in `tests/catalog.rs` must be reconciled against §4.4 by the implementer of Task 2.
+Spec coverage: §4.1 CLI → Tasks 5, 7; §4.2 config → Task 3; §4.3 HTTP → Task 7; §4.4 catalog → Tasks 2, 4; §5 behavior → Tasks 4, 7; §6 packaging → Task 5 (unit verified Task 6); §7 repo, lints, CI, release → Tasks 1, 8; §7a ordering → Task 6 placed between 5 and 7; §8 spike → Tasks 6 and 7 step 6; §9 deployment integration → out of scope by §7a; §10 builder choices → made in the Interfaces blocks (Sample shape, `env_logger`, `ctrlc`, addresses-only readers, generated `docs/metrics.md`, two-job release so `gh` runs outside the container); §11 → Global Constraints. Type names used across tasks: `Sample`, `Scrape`, `Collector`, `AllowList`, `Options`, `Outcome`, `FakeCollector` are defined once and reused by name. Known weak spots: the no-GPU sandbox cannot exercise NVML error paths (Review Focus 5 is verified by hand in Task 6/7 and documented); the catalog row count in `tests/catalog.rs` must be reconciled against §4.4 by the implementer of Task 2.

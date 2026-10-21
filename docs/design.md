@@ -3,33 +3,30 @@
 Date: 2026-10-20. Author: agent, from a design discussion with James the same day. Status:
 **approved by James 2026-10-20** (every call the author made in this document stands; see §11 for
 the rulings). The implementation plan is `docs/superpowers/plans/2026-10-20-nvml-exporter.md`.
-This copy is the canonical one; the original lives in the research repo
-`<research-repo>/docs/superpowers/specs/2026-10-20-nvml-exporter-design.md`.
+This copy is the canonical one; the original lives in the maintainer's private research repo.
 
 ## 1. Intent
 
 A single Rust binary that reads one NVIDIA GPU through NVML (`libnvidia-ml.so.1`, shipped with
 the driver already on the host) and serves Prometheus text on its own HTTP port. It replaces
-NVIDIA DCGM in the the operator's config repo metrics path.
+NVIDIA DCGM in the maintainer's metrics path.
 
 Why: DCGM measured ~175 MB on disk and ~520 MB RSS (hostengine ~450 MB, exporter ~73 MB) for
 what is, for us, a dozen NVML reads per second. Its extras (profiling metrics, `dcgmi diag`,
 job stats, policies) are not needed. It also put NVIDIA's apt repo and a pin on the VM to keep
-Debian's driver safe, and ran a 4.8.4 exporter on a 4.7.0 core that nobody supports. Evidence, in the research repo `<research-repo>`:
-`docs/home-deployment/2026-10-20-metrics-diagnostics/README.md` and
-`docs/research/2026-10-20-nvml-exporter-survey.md` (no maintained Rust or C NVML exporter
-exists; the survey's design findings are folded in below).
+Debian's driver safe, and ran a 4.8.4 exporter on a 4.7.0 core that nobody supports. Evidence is in the maintainer's private research
+repo: DCGM diagnostics on the card and a survey of OSS NVML exporters (no maintained Rust or C
+NVML exporter exists; the survey's design findings are folded in below).
 
 Consumers, in order of importance:
 
-1. **The fan controller on reader-host** (future, the operator's config repo): reads GPU temperature, HBM memory
-   temperature and power at ~1 Hz over the network from the hypervisor, and drives `pwm8` of
-   the fan controller on reader-host. Its fallback rule: no fresh sample within N seconds means hand the fan
+1. **A fan controller on the hypervisor host** (future): reads GPU temperature, HBM memory
+   temperature and power at ~1 Hz over the network, and drives the card's fan. Its fallback rule: no fresh sample within N seconds means hand the fan
    back to a safe duty. It needs a reliable "GPU gone" versus "exporter dead" distinction.
 2. **The automated thermal test harness** (research repo): logs the same fields plus clocks,
    throttle reasons and energy beside fan duty and tach.
 3. **A future central Prometheus**: scrapes the same endpoint for history.
-4. **A human with curl** on the VM or reader-host.
+4. **A human with curl** on the GPU host or the reader host.
 
 ## 2. Goals, non-goals, anti-goals
 
@@ -43,14 +40,14 @@ Goals:
   GPU or driver yields `nvml_up 0` and the process keeps serving and retrying.
 - Read-only by construction: the binary never calls an NVML setter (power limit, clocks,
   persistence, compute mode, ECC...). Enforced by a lint, see §7.
-- Boring delivery: Debian package from CI, published through pkg.jshkol.com, installed by a
-  the operator's config repo role at a pinned version.
+- Boring delivery: Debian package from CI, published through pkg.jshkol.com, installed by
+  configuration management at a pinned version.
 
 Non-goals (not in v1, may come later): multiple GPUs beyond "enumerate all and label by
 index" (v1 handles N devices trivially, but is tested on one); TLS; authentication beyond a
 reader allow-list; a textfile-collector mode; MIG; NVLink or NvSwitch; profiling metrics
-(DCGM's DCP); process-level GPU accounting; a vsock face (hypervisor has no native vsock option
-and `args` needs `root@pam`, rejected 2026-10-20).
+(DCGM's DCP); process-level GPU accounting; a vsock face (the hypervisor has no native vsock
+option, rejected 2026-10-20).
 
 Anti-goals (would make it a failure even if it works): any write to the GPU; a dependency on
 NVIDIA's apt repo; forking `nvidia-smi` per scrape (it re-initializes NVML each time and
@@ -66,11 +63,11 @@ glibc-linked `.so` loaded with `dlopen`).
 | D2 | Separate HTTP endpoint on its own port | node_exporter textfile: would force exposing 9100 on the VM; a separate port keeps node_exporter loopback-only on every host |
 | D3 | Listen on the VM's reader-facing address, not 0.0.0.0 | Bind-all plus nftables: the socket should not exist on other interfaces at all |
 | D4 | Reader allow-list inside the binary, checked on the accepted peer address; loopback always allowed | nftables role from the spike: dropped, PR 3 as designed is dead |
-| D5 | No TLS | Traffic stays on reader-host's bridge (passthrough pins the VM to reader-host); content is read-only numbers |
+| D5 | No TLS | Traffic stays on the hypervisor's local bridge (passthrough pins the VM to its host); content is read-only numbers |
 | D6 | Plain glibc dynamic build for Debian 13 (`x86_64-unknown-linux-gnu`) | musl static: cannot `dlopen` the driver's glibc `.so` |
-| D7 | Separate repo `shkolnik/nvml-exporter`, own CI and releases, deb through pkg.jshkol.com, the operator's config repo pins the version | Embedding in the operator's config repo: wrong repo shape for a compiled, versioned tool; the operator's config repo has no CI and must stay "pins versions, builds nothing" |
+| D7 | Separate repo `shkolnik/nvml-exporter`, own CI and releases, deb through pkg.jshkol.com, configuration management pins the version | Embedding in the configuration-management repo: wrong repo shape for a compiled, versioned tool; that repo has no CI and must stay "pins versions, builds nothing" |
 | D8 | Collect on scrape | Background sampler: unnecessary for sub-ms reads; collect-on-scrape makes freshness equal scrape time |
-| D9 | DCGM parked: the operator's config repo PR #15 is a draft and is deleted when this lands; the `nvidia-dcgm` role is removed from the VM play in the same the operator's config repo change | Keep both: nothing uses DCGM |
+| D9 | DCGM parked: the draft DCGM deployment is deleted when this lands, and DCGM is removed from the GPU host in the same configuration change | Keep both: nothing uses DCGM |
 
 ## 4. Interface
 
@@ -98,13 +95,12 @@ collect_pcie = false              # PCIe throughput costs a 20 ms NVML sampling 
 The shipped conffile carries all three keys with comments, so later additions are the only
 conffile changes an upgrade can prompt about. `check` prints all three.
 
-the operator's config repo sets `listen` to the VM's address on the segment reader-host reaches it over (today
-192.0.2.10/24 by DHCP; reader-host is 192.0.2.1) and `readers = ["192.0.2.1"]`. A changed
-DHCP lease makes the bind fail at start; the unit restarts until the address exists (see §6),
-and the the operator's config repo side should give the VM a reservation. Port 9835 is the Prometheus
+Deployment sets `listen` to the GPU host's address on the segment the reader reaches it over
+(e.g. `192.0.2.10:9835`) and `readers` to the reader's address (e.g. `["192.0.2.1"]`). A
+static address is advisable because `listen` binds a specific address: a changed address makes
+the bind fail at start, and the unit restarts until the address exists (see §6). Port 9835 is the Prometheus
 registry's allocation for an NVIDIA GPU exporter and the shipped default; it is overridable
-per host through `listen` (James's one request on this spec), and the operator's config repo's
-`nvml_exporter_listen` carries that override.
+per host through `listen` (James's one request on this spec).
 
 ### 4.3 HTTP
 
@@ -238,7 +234,7 @@ Verified on the V100 2026-10-21 (spike): the unit works as written under Dynamic
 Path `$HOME/workspace/nvml-exporter`, branch `main`, local until James creates
 `github.com/shkolnik/nvml-exporter` and adds the agent as collaborator; then
 `git remote add origin git@github.com:shkolnik/nvml-exporter.git` and push. Commits by
-`shkolnik-beep <shkolnik-beep>` via `git -c`, no attribution trailers. License
+`shkolnik-beep` (the maintainer's bot identity) via `git -c`, no attribution trailers. License
 MIT OR Apache-2.0 like cfab, copyright James Shkolnik.
 
 Layout, modeled on cfab (single crate, flat `src/`) with beep-browser's pinned toolchain:
@@ -306,10 +302,10 @@ is a trust decision).
 
 The plan that follows this spec covers the `nvml-exporter` repo only: bootstrap, the binary,
 packaging, CI and release workflows, the spike on the card, and the first formal release.
-§9 (the operator's config repo integration) is a later plan and PR; its one ruling for James is listed in §11.
+§9 (deployment integration) is a later plan and PR; its one ruling for James is listed in §11.
 
 Ordering while the GitHub repo does not exist yet: all work commits locally. The spike does
-not wait for CI: this workstation runs Debian 13 (glibc 2.41, the VM's exact libc) with Rust
+not wait for CI: this workstation runs Debian 13 (glibc 2.41, the GPU host's exact libc) with Rust
 1.98 and can build the deb with `cargo deb` locally; James carries it to the VM with scp and
 installs it with `dpkg -i`. CI and the release workflow are proven once James creates the
 remote. The spike runs after the collector and `once` exist (a thin vertical slice: config,
@@ -324,10 +320,10 @@ soname Debian's `libnvidia-ml1` ships, so no explicit path is needed. `Device` h
 
 pkg.jshkol.com expectations, verified in `pkg/scripts/check-releases.sh`: only formal GitHub
 releases (drafts and prereleases excluded), a `SHA256SUMS` asset whose `.deb` lines become
-one `.redirect` each; the rolling `dev` prerelease is never indexed. the operator's config repo therefore
+one `.redirect` each; the rolling `dev` prerelease is never indexed. Deployment therefore
 installs formal versions only; dev debs are carried by hand for spikes.
 
-## 8. Proof on the card, before any the operator's config repo change
+## 8. Proof on the card, before any deployment change
 
 The first release is gated on a spike on the VM, James operating:
 
@@ -341,23 +337,18 @@ The first release is gated on a spike on the VM, James operating:
    `DynamicUser`, the journal says so and §6's fallbacks apply.
 3. Footprint: `systemctl show -p MemoryCurrent`, binary size, `ldd` (expect libc, libgcc_s,
    libm only; `libnvidia-ml` is dlopened).
-4. With `listen` on the VM address and `readers = ["192.0.2.1"]`: curl from reader-host succeeds,
-   curl from the sandbox VM (192.0.2.53) is refused, `127.0.0.1:9835` has no socket (there is
+4. With `listen` on the VM address and `readers = ["192.0.2.1"]`: curl from the reader host succeeds,
+   curl from another host not in `readers` (e.g. 192.0.2.53) is refused, `127.0.0.1:9835` has no socket (there is
    no second listener, §11.4), and curl from the VM to its own LAN address is refused too (the
    peer is the VM's address, not loopback). `once` is the local diagnostic.
 
-## 9. the operator's config repo integration (its own PR, after the first formal release)
+## 9. Deployment integration (separate, after the first formal release)
 
-Role `nvml-exporter` under the `nvidia_` naming? No: the tool is `nvml-exporter`, so the role
-is `nvml-exporter` and the switch `nvml_exporter: true` with settings `nvml_exporter_version`
-(pinned deb version), `nvml_exporter_listen` (defaults to
-`ansible_facts['default_ipv4']['address']:9835`) and `nvml_exporter_readers`
-(`["192.0.2.1"]` for gpu-host). The role needs pkg.jshkol.com configured on the VM (today only
-the pve role does that, in `30_apt.yaml`; the common pieces move to a shared role or the VM
-play gets the same tasks). Verify: `nvml-exporter once` on the host, assert the thermal
-fields, assert `ss` shows the port on the configured address only, curl from the controller
-address is left to James. The same PR removes `nvidia-dcgm` from the VM play and inventory,
-adds `nvml-exporter.service` to the gpu-host systemd unit list, and deletes PR #15's branch.
+Deployment automation lives in the operator's configuration-management repo, outside this
+repo's scope. What it needs from this design: install a pinned formal version from
+pkg.jshkol.com; set `listen` (default: the host's primary address on port 9835) and `readers`;
+verify with `nvml-exporter once` (assert the thermal fields) and `ss` (the port on the
+configured address only); remove DCGM from the GPU host in the same change.
 
 ## 10. Left to the builder
 
@@ -378,6 +369,6 @@ James accepted every call in this document. The four questions it had left open:
    (§4.2). Nothing in the binary may assume 9835.
 2. Metric prefix: `nvml_`.
 3. §9's apt setup (shared role versus copying the pkg.jshkol.com tasks into the VM play):
-   deferred to the the operator's config repo integration plan; not this repo's concern.
+   deferred to the deployment integration plan; not this repo's concern.
 4. No second loopback socket. `once` covers local diagnostics; a host that wants curl on its
    own LAN address adds that address to `readers`.

@@ -8,11 +8,11 @@
 ## 1. Resume note — keep current and short
 
 **Status (2026-10-21):** plan executed through Task 9; v0.1.0 released from the formal release
-workflow; pkg onboarding pending James's first `.redirect` PR; root SSH on gpu-host no longer needed
-(James rebuilds the VM).
+workflow; pkg onboarding pending James's first `.redirect` PR. Home-network and personal details
+scrubbed from the tree and the git history rewritten with the same map; v0.1.1 tag pending.
 
-**Next:** 0.1.1 with the final-review fixes (committed, awaiting James's tag). The the operator's config repo
-integration (design §9) is being done by another agent in the the operator's config repo repo; this repo's agent
+**Next:** 0.1.1 with the final-review fixes (committed, awaiting James's tag). Deployment
+automation lives in a separate, private repo and is not this repo's concern; this repo's agent
 stays focused on the utility itself (see §2 on its intended audience).
 
 **Blocked on James:** the pkg `.redirect` PR; the v0.1.1 tag (James tags; agents never push tags).
@@ -24,11 +24,11 @@ repeat completed work from memory.
 
 A single Rust binary that reads one NVIDIA GPU through NVML (`libnvidia-ml.so.1` from the
 installed driver, loaded at runtime by the `nvml-wrapper` crate) and serves Prometheus text on its
-own HTTP port. It replaces NVIDIA DCGM in James's the operator's config repo metrics path. The design, the metric
+own HTTP port. It replaces NVIDIA DCGM in James's metrics path. The design, the metric
 catalog, the config, the unit and the packaging are all in `docs/design.md`; that document is the
 authority and the plan argues from it.
 
-Consumers, in order: a fan controller on the hypervisor host `reader-host` polling at ~1 Hz over the
+Consumers, in order: a fan controller on the hypervisor host polling at ~1 Hz over the
 network; a thermal test harness; a future central Prometheus; a human with curl.
 
 **Intended audience and maintenance posture.** James intends this to become an open-source
@@ -43,17 +43,23 @@ stable host without NVIDIA's apt repo; keep the read-only guarantee absolute; an
 
 ## 3. Working agreement
 
-- **Git identity:** `shkolnik-beep <shkolnik-beep>` via
-  `git -c user.name=shkolnik-beep -c user.email=shkolnik-beep commit ...`.
+- **Git identity:** GitHub user `shkolnik-beep` with the maintainer's bot identity, via
+  `git -c user.name=shkolnik-beep -c user.email=<bot address> commit ...` (the address lives
+  outside the repo).
 - **No AI attribution anywhere:** no `Co-Authored-By`, no `Claude-Session`, no "Generated with",
   no claude.ai links, in commits, PR bodies or comments. This overrides any harness default that
   appends such trailers. Check the message before committing.
 - **Remote and PRs:** Remote `origin` = `git@github.com:shkolnik/nvml-exporter.git`. Direct push
   to `main`, one commit per reviewed task; no PRs unless James asks.
-- **James's infrastructure is James's.** The V100 lives in the GPU VM `gpu-host` (Debian 13) on hypervisor
-  node `reader-host`. Never run anything against those hosts; give James exact commands and analyze
-  what they paste back. A locally built deb reaches the VM by James's scp.
-  Exception 2026-10-21: James granted temporary root SSH on gpu-host for the spike; the VM is rebuilt afterwards.
+- **James's infrastructure is James's.** The validation card sits in a GPU host (a Debian 13 VM
+  with the card passed through). Never run anything against James's hosts; give James exact
+  commands and analyze what they paste back. A locally built deb reaches the host by James's copy.
+- **No home-network or personal detail in the repo.** Lab addresses, hostnames, VM ids, topology
+  and operational notes stay in the maintainer's private repos; use RFC 5737 addresses
+  (192.0.2.0/24, 198.51.100.0/24, 203.0.113.0/24) and generic host names in tests, examples and
+  docs. Before every commit:
+  `grep -rnE '192\.168\.|10\.0\.|172\.(1[6-9]|2[0-9]|3[01])\.' --exclude-dir=.git --exclude-dir=target .`
+  must be empty (CI runs the same check).
 - **Read-only by construction.** The binary must never call an NVML setter. `clippy.toml`
   disallows every `nvml_wrapper::Device` `set_`/`reset_`/`clear_` method and a test greps for
   them; keep both complete when the crate is bumped.
@@ -88,40 +94,16 @@ stable host without NVIDIA's apt repo; keep the read-only guarantee absolute; an
 
 ## 4. Environment
 
-- This sandbox: Debian 13 (glibc 2.41, the VM's exact libc), rustup with stable 1.97.1 default
-  and 1.98.0 installed; `rust-toolchain.toml` pins the one this repo uses. `cargo-deb` is not
-  installed yet; the plan installs `cargo-deb@3.8.0` with `cargo install --locked`. No NVIDIA
-  driver here: every test that needs a GPU is `#[ignore]` and runs only on the VM.
+- Build sandbox: Debian 13 (glibc 2.41, the GPU host's libc), rustup with the toolchain pinned in
+  `rust-toolchain.toml`; `cargo-deb@3.8.0` via `cargo install --locked`. No NVIDIA driver there:
+  every test that needs a GPU is `#[ignore]` and runs only on the GPU host.
 - Network: crates.io is reachable for `cargo add`/`cargo build`.
-- The VM: Tesla V100-PCIE-32GB, driver 550.163.01 from Debian (`libnvidia-ml1`), persistence
-  daemon present, address 192.0.2.10 (DHCP; was .63; reachable as `gpu-host.example` for the spike only), reader = reader-host at 192.0.2.1, a second VM
-  (sandbox) at 192.0.2.53 serves as the "not allowed" peer in tests. Power cap defaults to
-  250 W after a rebuild; James sets 150/175 W by hand before any load run.
+- The GPU host: Tesla V100-PCIE-32GB, driver 550.163.01 from Debian (`libnvidia-ml1`), persistence
+  daemon present. Live allow-list tests use one allowed reader and one refused peer on the same
+  segment. Power cap defaults to 250 W after a rebuild; James sets 150/175 W by hand before any
+  load run.
 
-## 5. Context beyond this repo (optional reading, same sandbox)
+## 5. Context beyond this repo
 
-Everything that led here is in sibling checkouts under `/<workspace>/`. Read them only
-when a task needs the detail; the design document already distills what the exporter needs.
-
-- `<research-repo>/` (James's V100 research repo, local commits only, never push):
-  - `docs/superpowers/specs/2026-10-20-nvml-exporter-design.md`: the original of
-    `docs/design.md`.
-  - `docs/research/2026-10-20-nvml-exporter-survey.md`: the survey of OSS NVML exporters
-    (utkuozdemir/nvidia_gpu_exporter, jelmd/nvmex, rvidia-exporter) whose design findings are
-    folded into the design; useful when an NVML detail is unclear.
-  - `docs/home-deployment/2026-10-20-metrics-diagnostics/README.md`: DCGM diagnostics on the
-    card: which fields the V100 reports (memory temperature via field 82 at 52 °C under a 150 W
-    cap, power refresh every 100 ms), and the DCGM footprint that motivated this tool.
-  - `<research-repo bring-up log>`: how the card is passed through
-    and cooled; the fan controller consumer's background.
-  - `AGENTS.md` there is the research project's own entry point; its working norms match §3.
-- `the operator's config repo/` (James's infrastructure repo, PR-only): the future consumer. Roles `metrics`
-  (node_exporter) and `nvidia-dcgm` (to be removed when this lands), inventory `vms.yaml`, and
-  `agent_notes/` (agent memory for that repo). The the operator's config repo integration (role `nvml-exporter`,
-  variables `nvml_exporter_version/_listen/_readers`) is a later plan, not this one.
-- `cfab/`: the Rust project this repo's layout, lints, cargo-deb metadata, `scripts/tag-release.sh`
-  and GitHub workflows are modeled on. `beep-browser-workspace/`: the pinned-toolchain pattern.
-  `fan-controller/`: the `debian:trixie` build. `pkg/`: the apt repo (`scripts/check-releases.sh`
-  indexes only formal releases with a `SHA256SUMS` asset).
-- `/<scratch>/.../scratchpad/nvmlw/nvml-wrapper-0.13.0/`: the crate source, if still
-  present; otherwise `~/.cargo/registry/src/*/nvml-wrapper-0.13.0/` after the first build.
+Related private repos exist on the maintainer's side; nothing in this repo depends on them. The
+`nvml-wrapper` 0.13.0 source is under `~/.cargo/registry/src/*/nvml-wrapper-0.13.0/` after a build.
