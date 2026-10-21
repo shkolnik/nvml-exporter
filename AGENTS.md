@@ -7,13 +7,14 @@
 
 ## 1. Resume note — keep current and short
 
-**Status (2026-10-21):** Tasks 1–7 complete; both spike rounds passed (`docs/spike-log.md`);
-root SSH on gpu-host can be revoked (James rebuilds the VM).
+**Status (2026-10-21):** plan executed through Task 9; v0.1.0 released from the formal release
+workflow; pkg onboarding pending James's first `.redirect` PR; root SSH on gpu-host no longer needed
+(James rebuilds the VM).
 
-**Next:** Task 8 (CI/release workflows, README), then Task 9 (first formal release, gated on
-James's go for the tag).
+**Next:** 0.1.1 with the final-review fixes (committed, awaiting James's tag), then the the operator's config repo
+integration plan (design §9) in the the operator's config repo repo: a separate plan, separate repo.
 
-**Blocked on James:** nothing until the tag.
+**Blocked on James:** the pkg `.redirect` PR; the v0.1.1 tag (James tags; agents never push tags).
 
 Update this block at phase transitions and before handoff. Verify against files and git; never
 repeat completed work from memory.

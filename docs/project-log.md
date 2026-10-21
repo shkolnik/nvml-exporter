@@ -25,3 +25,10 @@ Commit: see this commit. Tests: 8 new passed (tests/http.rs); 29 passed, 3 ignor
 
 ## 2026-10-21T01:08Z — Task 8 complete: CI, release workflow, dependabot, tag script, README
 Commit: see this commit. Tests: 29 passed, 3 ignored (live). Notes: ci.yml runs fmt/clippy/test in debian:trixie (rustup with stable default, pinned 1.98.0 via `rustup toolchain install`), PRs also build the deb, print `dpkg-deb -I` and upload it. release.yml splits cfab's single job into `build` (trixie container: test, meta, cargo deb, dist/) and `publish` (runner: attest, formal release + SHA256SUMS + pkg dispatch, or rolling `dev` prerelease by delete+create as cfab does). Action pins follow the brief, which matches cfab: checkout/upload/download-artifact @v7, cache @v5, attest-build-provenance @v4. Formal binary asset named `nvml-exporter-linux-x86_64` (brief and cfab). Both workflows are unverified until the first push; the formal path also needs the PKG_TRIGGER_TOKEN secret.
+
+## 2026-10-21T01:22Z — Task 9 complete: remote, CI green, first formal release
+Commit: see this commit. Tests: 29 passed, 3 ignored. Notes: James tagged v0.1.0 on 6a3f6e3 on 2026-10-21; the release run succeeded with assets nvml-exporter_0.1.0-1_amd64.deb, nvml-exporter-linux-x86_64 and SHA256SUMS, and the build-provenance attestation verifies with `gh attestation verify`.
+The PKG_TRIGGER_TOKEN dispatch ran check-releases in shkolnik/pkg successfully, but nvml-exporter is not yet under pkg's pool/: the first pool/nvml-exporter/v0.1.0/nvml-exporter_0.1.0-1_amd64.deb.redirect is James's hand step (design §7).
+The CI-built dev deb was verified on the V100: identical behavior, 15.7 MB peak.
+Changes land by direct push to main, one commit per reviewed task.
+The final whole-branch review passed ("ship as-is") with one non-blocking Important finding: GpuLost on a metric read keeps nvml_up 1. 0.1.1 carries that fix, the §5 startup scrape so the journal shows driver and devices, and a README metrics-note correction.
