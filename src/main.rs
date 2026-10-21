@@ -75,6 +75,7 @@ fn serve(cfg: &Config) -> ExitCode {
         readers(cfg).join(", "),
         cfg.collect_pcie
     );
+    server.collect_once();
     let shutdown = Arc::new(AtomicBool::new(false));
     let flag = Arc::clone(&shutdown);
     if let Err(e) = ctrlc::set_handler(move || flag.store(true, Ordering::SeqCst)) {

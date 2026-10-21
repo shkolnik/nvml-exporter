@@ -74,9 +74,10 @@ nvml-exporter --version
 
 ## Metrics
 
-All series are prefixed `nvml_` and per-GPU series carry `gpu="<index>"`. The catalog, with
-the NVML source of each series and what the V100 reports, is in
-[docs/metrics.md](docs/metrics.md).
+All series are prefixed `nvml_` and per-GPU series carry `gpu="<index>"`. The catalog (name,
+type, whether per GPU, help text) is in [docs/metrics.md](docs/metrics.md); the NVML source of
+each series is in [docs/design.md](docs/design.md) §4.4, and what the V100 reports is in
+[docs/spike-log.md](docs/spike-log.md).
 
 ## Security posture
 

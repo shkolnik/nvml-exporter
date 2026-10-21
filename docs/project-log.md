@@ -32,3 +32,8 @@ The PKG_TRIGGER_TOKEN dispatch ran check-releases in shkolnik/pkg successfully, 
 The CI-built dev deb was verified on the V100: identical behavior, 15.7 MB peak.
 Changes land by direct push to main, one commit per reviewed task.
 The final whole-branch review passed ("ship as-is") with one non-blocking Important finding: GpuLost on a metric read keeps nvml_up 1. 0.1.1 carries that fix, the §5 startup scrape so the journal shows driver and devices, and a README metrics-note correction.
+
+## 2026-10-21T01:23Z — 0.1.1: final-review fixes
+Commit: see this commit. Tests: 30 passed, 3 ignored. Notes: (1) GpuLost or Uninitialized from any per-metric read now takes the device-failure path (shutdown, nvml_up 0, one warn, re-init next scrape) and counts nothing; classify() splits NvmlError into Silent/Count/Fatal (unit-tested), and reads are now closures so no NVML call is made after a fatal one. Unverifiable without a real GPU loss.
+(2) serve runs one scrape after bind, so the journal shows "NVML up: driver …, devices […]" (or the down warning) right after the listening line, per design §5; seen here as the down warning, the up line is unverified until the card.
+(3) README metrics note now says what docs/metrics.md holds and points to design §4.4 and docs/spike-log.md. Version 0.1.1; James tags v0.1.1.

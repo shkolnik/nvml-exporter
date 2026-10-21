@@ -75,6 +75,11 @@ impl<'a> Server<'a> {
         })
     }
 
+    /// Runs one scrape outside any request, so the collector logs NVML's state at startup.
+    pub fn collect_once(&mut self) {
+        self.collector.collect();
+    }
+
     /// # Panics
     /// If the OS cannot report the bound socket's address.
     #[must_use]

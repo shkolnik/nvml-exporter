@@ -59,8 +59,9 @@ fn collector_reads_other_errors_count_and_omit() {
     assert_parses(&once_output());
 }
 
-/// Placeholder: a failing device handle (GPU lost, driver reload) drops the scrape to
-/// `nvml_up 0` and re-initializes on the next one. Only the card can fail that way, so this is
+/// Placeholder: a failing device handle (GPU lost, driver reload), or `GpuLost`/`Uninitialized`
+/// from any per-metric read, drops the scrape to `nvml_up 0` with nothing counted under the
+/// metric, and re-initializes on the next one. Only the card can fail that way, so this is
 /// verified by hand in `docs/spike-log.md`.
 #[test]
 #[ignore = "needs an NVIDIA GPU and driver; verified by hand in docs/spike-log.md"]

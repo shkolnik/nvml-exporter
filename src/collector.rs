@@ -96,52 +96,92 @@ fn sample_value_to_f64(v: &SampleValue) -> f64 {
     }
 }
 
-fn read<T>(errors: &mut ErrorCounts, metric: &'static str, r: Result<T, NvmlError>) -> Option<T> {
-    match r {
-        Ok(v) => Some(v),
-        Err(NvmlError::NotSupported) => None,
-        Err(e) => {
-            errors.record(metric);
-            log::debug!("{metric}: {e}");
-            None
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum ReadOutcome {
+    /// The GPU lacks the metric: omit it.
+    Silent,
+    /// Omit the metric and count the error under it.
+    Count,
+    /// The device or library is gone: the whole scrape is down.
+    Fatal,
+}
+
+#[allow(clippy::wildcard_enum_match_arm)] // any other error, including variants added later, is per metric
+pub fn classify(e: &NvmlError) -> ReadOutcome {
+    match e {
+        NvmlError::NotSupported => ReadOutcome::Silent,
+        NvmlError::GpuLost | NvmlError::Uninitialized => ReadOutcome::Fatal,
+        _ => ReadOutcome::Count,
+    }
+}
+
+/// Per-scrape read state: the error counters and the first fatal error, after which no
+/// further NVML read is made.
+struct Reads<'a> {
+    errors: &'a mut ErrorCounts,
+    fatal: Option<NvmlError>,
+}
+
+impl Reads<'_> {
+    fn read<T>(
+        &mut self,
+        metric: &'static str,
+        f: impl FnOnce() -> Result<T, NvmlError>,
+    ) -> Option<T> {
+        if self.fatal.is_some() {
+            return None;
+        }
+        match f() {
+            Ok(v) => Some(v),
+            Err(e) => {
+                match classify(&e) {
+                    ReadOutcome::Silent => {}
+                    ReadOutcome::Count => {
+                        self.errors.record(metric);
+                        log::debug!("{metric}: {e}");
+                    }
+                    ReadOutcome::Fatal => self.fatal = Some(e),
+                }
+                None
+            }
         }
     }
 }
 
-fn memory_temperature(errors: &mut ErrorCounts, device: &nvml_wrapper::Device<'_>) -> Option<f64> {
+fn memory_temperature(r: &mut Reads<'_>, device: &nvml_wrapper::Device<'_>) -> Option<f64> {
     const METRIC: &str = "nvml_memory_temperature_celsius";
-    let fields = read(
-        errors,
-        METRIC,
-        device.field_values_for(&[FieldId(NVML_FI_DEV_MEMORY_TEMP)]),
-    )?;
-    let sample = read(errors, METRIC, fields.into_iter().next()?)?;
-    read(errors, METRIC, sample.value)
+    let fields = r.read(METRIC, || {
+        device.field_values_for(&[FieldId(NVML_FI_DEV_MEMORY_TEMP)])
+    })?;
+    let first = fields.into_iter().next()?;
+    let sample = r.read(METRIC, || first)?;
+    r.read(METRIC, || sample.value)
         .as_ref()
         .map(sample_value_to_f64)
 }
 
 fn gauge<T>(
-    errors: &mut ErrorCounts,
+    r: &mut Reads<'_>,
     out: &mut Vec<Sample>,
     gpu: u32,
     metric: &'static str,
-    r: Result<T, NvmlError>,
+    f: impl FnOnce() -> Result<T, NvmlError>,
     convert: impl FnOnce(T) -> f64,
 ) {
-    if let Some(v) = read(errors, metric, r) {
+    if let Some(v) = r.read(metric, f) {
         out.push(Sample::gpu(metric, gpu, convert(v)));
     }
 }
 
-fn identity_sample(errors: &mut ErrorCounts, device: &nvml_wrapper::Device<'_>, i: u32) -> Sample {
+fn identity_sample(r: &mut Reads<'_>, device: &nvml_wrapper::Device<'_>, i: u32) -> Sample {
     const INFO: &str = "nvml_gpu_info";
-    let uuid = read(errors, INFO, device.uuid()).unwrap_or_default();
-    let name = read(errors, INFO, device.name()).unwrap_or_default();
-    let bus_id = read(errors, INFO, device.pci_info())
+    let uuid = r.read(INFO, || device.uuid()).unwrap_or_default();
+    let name = r.read(INFO, || device.name()).unwrap_or_default();
+    let bus_id = r
+        .read(INFO, || device.pci_info())
         .map(|p| p.bus_id)
         .unwrap_or_default();
-    let vbios = read(errors, INFO, device.vbios_version()).unwrap_or_default();
+    let vbios = r.read(INFO, || device.vbios_version()).unwrap_or_default();
     Sample::gpu(INFO, i, 1.0)
         .with_label("uuid", uuid)
         .with_label("name", name)
@@ -150,56 +190,31 @@ fn identity_sample(errors: &mut ErrorCounts, device: &nvml_wrapper::Device<'_>, 
 }
 
 fn device_samples(
-    errors: &mut ErrorCounts,
+    r: &mut Reads<'_>,
     device: &nvml_wrapper::Device<'_>,
     i: u32,
     collect_pcie: bool,
     out: &mut Vec<Sample>,
 ) {
-    out.push(identity_sample(errors, device, i));
-    let temp = device.temperature(TemperatureSensor::Gpu);
-    gauge(
-        errors,
-        out,
-        i,
-        "nvml_gpu_temperature_celsius",
-        temp,
-        f64::from,
-    );
-    if let Some(v) = memory_temperature(errors, device) {
+    out.push(identity_sample(r, device, i));
+    let temp = || device.temperature(TemperatureSensor::Gpu);
+    gauge(r, out, i, "nvml_gpu_temperature_celsius", temp, f64::from);
+    if let Some(v) = memory_temperature(r, device) {
         out.push(Sample::gpu("nvml_memory_temperature_celsius", i, v));
     }
-    let power = device.power_usage();
-    gauge(errors, out, i, "nvml_power_watts", power, milli_to_unit);
-    let limit = device.enforced_power_limit();
-    gauge(
-        errors,
-        out,
-        i,
-        "nvml_power_limit_watts",
-        limit,
-        milli_to_unit,
-    );
-    let energy = device.total_energy_consumption();
-    gauge(errors, out, i, "nvml_energy_joules_total", energy, |mj| {
+    let power = || device.power_usage();
+    gauge(r, out, i, "nvml_power_watts", power, milli_to_unit);
+    let limit = || device.enforced_power_limit();
+    gauge(r, out, i, "nvml_power_limit_watts", limit, milli_to_unit);
+    let energy = || device.total_energy_consumption();
+    gauge(r, out, i, "nvml_energy_joules_total", energy, |mj| {
         mj as f64 / 1000.0
     });
-    let sm = device.clock_info(Clock::SM);
-    gauge(errors, out, i, "nvml_sm_clock_hertz", sm, mhz_to_hz);
-    let mem_clock = device.clock_info(Clock::Memory);
-    gauge(
-        errors,
-        out,
-        i,
-        "nvml_memory_clock_hertz",
-        mem_clock,
-        mhz_to_hz,
-    );
-    if let Some(u) = read(
-        errors,
-        "nvml_utilization_gpu_ratio",
-        device.utilization_rates(),
-    ) {
+    let sm = || device.clock_info(Clock::SM);
+    gauge(r, out, i, "nvml_sm_clock_hertz", sm, mhz_to_hz);
+    let mem_clock = || device.clock_info(Clock::Memory);
+    gauge(r, out, i, "nvml_memory_clock_hertz", mem_clock, mhz_to_hz);
+    if let Some(u) = r.read("nvml_utilization_gpu_ratio", || device.utilization_rates()) {
         out.push(Sample::gpu(
             "nvml_utilization_gpu_ratio",
             i,
@@ -211,16 +226,12 @@ fn device_samples(
             percent_to_ratio(u.memory),
         ));
     }
-    if let Some(mem) = read(errors, "nvml_memory_used_bytes", device.memory_info()) {
+    if let Some(mem) = r.read("nvml_memory_used_bytes", || device.memory_info()) {
         out.push(Sample::gpu("nvml_memory_used_bytes", i, mem.used as f64));
         out.push(Sample::gpu("nvml_memory_total_bytes", i, mem.total as f64));
     }
-    if let Some(r) = read(
-        errors,
-        "nvml_throttle_reason",
-        device.current_throttle_reasons(),
-    ) {
-        out.extend(throttle_samples(i, r));
+    if let Some(reasons) = r.read("nvml_throttle_reason", || device.current_throttle_reasons()) {
+        out.extend(throttle_samples(i, reasons));
     }
     if collect_pcie {
         const PCIE: &str = "nvml_pcie_throughput_bytes_per_second";
@@ -228,7 +239,7 @@ fn device_samples(
             (PcieUtilCounter::Send, "tx"),
             (PcieUtilCounter::Receive, "rx"),
         ] {
-            if let Some(kbs) = read(errors, PCIE, device.pcie_throughput(counter)) {
+            if let Some(kbs) = r.read(PCIE, || device.pcie_throughput(counter)) {
                 out.push(
                     Sample::gpu(PCIE, i, f64::from(kbs) * 1000.0)
                         .with_label("direction", direction),
@@ -237,26 +248,14 @@ fn device_samples(
         }
     }
     // A fanless card (the V100) answers fan_speed(0) with InvalidArgument, not NotSupported.
-    if read(errors, "nvml_fan_speed_ratio", device.num_fans()).is_some_and(|n| n > 0) {
-        let fan = device.fan_speed(0);
-        gauge(
-            errors,
-            out,
-            i,
-            "nvml_fan_speed_ratio",
-            fan,
-            percent_to_ratio,
-        );
+    if r.read("nvml_fan_speed_ratio", || device.num_fans())
+        .is_some_and(|n| n > 0)
+    {
+        let fan = || device.fan_speed(0);
+        gauge(r, out, i, "nvml_fan_speed_ratio", fan, percent_to_ratio);
     }
-    let persistence = device.is_in_persistent_mode();
-    gauge(
-        errors,
-        out,
-        i,
-        "nvml_persistence_mode",
-        persistence,
-        bool_value,
-    );
+    let persistence = || device.is_in_persistent_mode();
+    gauge(r, out, i, "nvml_persistence_mode", persistence, bool_value);
 }
 
 pub struct NvmlCollector {
@@ -324,20 +323,26 @@ impl Collector for NvmlCollector {
         let Some(nvml) = self.nvml.as_ref() else {
             return self.finish(false, Vec::new(), start);
         };
-        let errors = &mut self.errors;
+        let mut r = Reads {
+            errors: &mut self.errors,
+            fatal: None,
+        };
         let mut samples = Vec::new();
         let mut device_failure: Option<NvmlError> = None;
         match nvml.device_count() {
             Ok(count) => {
                 samples.push(Sample::global("nvml_up", 1.0));
                 samples.push(Sample::global("nvml_device_count", f64::from(count)));
-                if let Some(v) = read(errors, "nvml_driver_info", nvml.sys_driver_version()) {
+                if let Some(v) = r.read("nvml_driver_info", || nvml.sys_driver_version()) {
                     samples.push(Sample::global("nvml_driver_info", 1.0).with_label("version", v));
                 }
                 for i in 0..count {
                     match nvml.device_by_index(i) {
                         Ok(device) => {
-                            device_samples(errors, &device, i, self.collect_pcie, &mut samples);
+                            device_samples(&mut r, &device, i, self.collect_pcie, &mut samples);
+                            if r.fatal.is_some() {
+                                break;
+                            }
                         }
                         Err(e) => {
                             device_failure = Some(e);
@@ -348,6 +353,7 @@ impl Collector for NvmlCollector {
             }
             Err(e) => device_failure = Some(e),
         }
+        let device_failure = device_failure.or(r.fatal);
         if let Some(e) = device_failure {
             self.shutdown();
             self.log_transition(false, &e.to_string(), &[]);
@@ -451,6 +457,14 @@ mod tests {
         assert!(st.observe(false));
         let mut fresh = LogState::default();
         assert!(fresh.observe(true), "first successful scrape logs up");
+    }
+
+    #[test]
+    fn classify_separates_silent_countable_and_fatal_errors() {
+        assert_eq!(classify(&NvmlError::NotSupported), ReadOutcome::Silent);
+        assert_eq!(classify(&NvmlError::GpuLost), ReadOutcome::Fatal);
+        assert_eq!(classify(&NvmlError::Uninitialized), ReadOutcome::Fatal);
+        assert_eq!(classify(&NvmlError::Unknown), ReadOutcome::Count);
     }
 
     #[test]
