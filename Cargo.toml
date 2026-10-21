@@ -1,0 +1,54 @@
+[package]
+name = "nvml-exporter"
+version = "0.1.0"
+edition = "2024"
+rust-version = "1.98"
+description = "Small Prometheus exporter for NVIDIA GPUs over NVML"
+license = "MIT OR Apache-2.0"
+repository = "https://github.com/shkolnik/nvml-exporter"
+
+[lib]
+name = "nvml_exporter"
+path = "src/lib.rs"
+
+[[bin]]
+name = "nvml-exporter"
+path = "src/main.rs"
+
+[dependencies]
+nvml-wrapper = "0.13"
+clap = { version = "4", features = ["derive"] }
+serde = { version = "1", features = ["derive"] }
+toml = "1"
+ipnet = "2"
+log = "0.4"
+env_logger = "0.11"
+ctrlc = { version = "3", features = ["termination"] }
+
+[dev-dependencies]
+prometheus-parse = "0.2"
+
+[lints.rust]
+unsafe_code = "forbid"
+
+[lints.clippy]
+all = { level = "warn", priority = -1 }
+pedantic = { level = "warn", priority = -1 }
+wildcard_enum_match_arm = "warn"
+dbg_macro = "warn"
+todo = "warn"
+unimplemented = "warn"
+module_name_repetitions = "allow"
+missing_errors_doc = "allow"
+missing_panics_doc = "allow"
+must_use_candidate = "allow"
+cast_precision_loss = "allow"
+cast_possible_truncation = "allow"
+cast_sign_loss = "allow"
+
+[profile.release]
+opt-level = "s"
+lto = true
+codegen-units = 1
+panic = "abort"
+strip = true
