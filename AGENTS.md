@@ -1,7 +1,8 @@
 # AGENTS.md — nvml-exporter
 
 > **Start here each session.** Read the resume note below, then [docs/design.md](docs/design.md)
-> (the approved design), then the active plan in `docs/superpowers/plans/`. This file is the
+> (the approved design), then the active plan in `docs/superpowers/plans/`, then the tail of
+> `docs/project-log.md` (what the last session did and decided). This file is the
 > project entry point and working agreement.
 
 ## 1. Resume note — keep current and short
@@ -54,6 +55,20 @@ network; a thermal test harness; a future central Prometheus; a human with curl.
   `lintian` when available. Report untested work as untested.
 - **Fail visibly.** A metric the GPU does not support is omitted, never 0. NVML down means
   `nvml_up 0`, not a crash and not a stale value.
+- **Project log, append-only.** `docs/project-log.md` is how other agents and James follow
+  progress without a messaging channel. Append an entry (never edit or reorder earlier ones) at
+  the completion of every plan task, and whenever something unexpected happens or a decision is
+  made that the plan did not spell out. Format, one entry per event:
+
+  ```
+  ## 2026-10-21T14:05Z — Task 3 complete: config and allow-list
+  Commit: <sha>. Tests: 5 passed. Notes: <one to five lines: what was hard, what was decided
+  and why, what the next task should know, anything James must do>.
+  ```
+
+  Use `date -u +%Y-%m-%dT%H:%MZ` for the timestamp. Entries for a blocker or a question for
+  James start with `BLOCKED:` or `ASK JAMES:` after the timestamp so they are easy to grep.
+  Commit the log with the task's commit (or on its own when the event is not a commit).
 - **Decisions survive sessions.** Rulings made while executing the plan go in the plan's
   amendments section with the reason. Don't re-litigate settled design choices without new
   evidence; surface new evidence to James.

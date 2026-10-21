@@ -26,6 +26,7 @@
 - Git: identity `shkolnik-beep <shkolnik-beep>` via `git -c`; no AI attribution trailers of any kind; commits on local `main`; no remote until James says it exists (Task 9).
 - James operates the VM and reader-host; the plan gives commands and reads pasted output. Never run anything against those hosts.
 - Before every commit: `cargo fmt --check && cargo clippy --all-targets -- -D warnings && cargo test --locked`.
+- Every task ends with an entry appended to `docs/project-log.md` (format in `AGENTS.md` §3), committed with the task; unexpected challenges and rulings get their own entries as they happen.
 
 ## Review Focus
 
@@ -127,10 +128,12 @@ fn sources_never_call_a_setter() {
 Run: `cargo build && cargo fmt --check && cargo clippy --all-targets -- -D warnings && cargo test --locked`
 Expected: all green; `cargo run -- --version` prints `nvml-exporter 0.1.0`. Rustup downloads 1.98.0 on first use if `rustup toolchain list` lacks it (it is installed on this sandbox).
 
-- [ ] **Step 6: Commit**
+- [ ] **Step 6: Append the task entry to `docs/project-log.md`** (timestamp, task number and name, test count, notes; write `Commit: see this commit` since the sha is not known yet), then include it in the commit.
+
+- [ ] **Step 7: Commit**
 
 ```bash
-git add Cargo.toml Cargo.lock rust-toolchain.toml rustfmt.toml clippy.toml src tests
+git add Cargo.toml Cargo.lock rust-toolchain.toml rustfmt.toml clippy.toml src tests docs/project-log.md
 git -c user.name=shkolnik-beep -c user.email=shkolnik-beep commit -m "Crate scaffold: pinned toolchain, lints, NVML setter ban"
 ```
 
@@ -253,11 +256,13 @@ Expected: compile errors (`catalog`/`expo` modules missing).
 Run: `UPDATE_DOCS=1 cargo test --test catalog && cargo test --test expo --test catalog`
 Expected: PASS; `docs/metrics.md` exists with 23 rows.
 
-- [ ] **Step 6: Lint and commit**
+- [ ] **Step 6: Append the task entry to `docs/project-log.md`** (timestamp, task number and name, test count, notes; write `Commit: see this commit` since the sha is not known yet), then include it in the commit.
+
+- [ ] **Step 7: Lint and commit**
 
 ```bash
 cargo fmt --check && cargo clippy --all-targets -- -D warnings && cargo test --locked
-git add src/catalog.rs src/expo.rs src/lib.rs tests/expo.rs tests/catalog.rs docs/metrics.md
+git add src/catalog.rs src/expo.rs src/lib.rs tests/expo.rs tests/catalog.rs docs/metrics.md docs/project-log.md
 git -c user.name=shkolnik-beep -c user.email=shkolnik-beep commit -m "Metric catalog and Prometheus text exposition"
 ```
 
@@ -347,11 +352,13 @@ Deserialize into a private `#[derive(Deserialize)] #[serde(deny_unknown_fields)]
 Run: `cargo test --test config`
 Expected: PASS.
 
-- [ ] **Step 5: Lint and commit**
+- [ ] **Step 5: Append the task entry to `docs/project-log.md`** (timestamp, task number and name, test count, notes; write `Commit: see this commit` since the sha is not known yet), then include it in the commit.
+
+- [ ] **Step 6: Lint and commit**
 
 ```bash
 cargo fmt --check && cargo clippy --all-targets -- -D warnings && cargo test --locked
-git add src/config.rs src/lib.rs tests/config.rs
+git add src/config.rs src/lib.rs tests/config.rs docs/project-log.md
 git -c user.name=shkolnik-beep -c user.email=shkolnik-beep commit -m "Config file and reader allow-list"
 ```
 
@@ -459,11 +466,13 @@ Expected: PASS (the integration test takes the no-driver path on this sandbox).
 Run: `cargo test --locked`
 Expected: PASS; an unused-module warning from `common` in crates that do not use it yet is avoided by adding `#![allow(dead_code)]` at the top of `common/mod.rs`.
 
-- [ ] **Step 7: Lint and commit**
+- [ ] **Step 7: Append the task entry to `docs/project-log.md`** (timestamp, task number and name, test count, notes; write `Commit: see this commit` since the sha is not known yet), then include it in the commit.
+
+- [ ] **Step 8: Lint and commit**
 
 ```bash
 cargo fmt --check && cargo clippy --all-targets -- -D warnings && cargo test --locked
-git add src/collector.rs src/lib.rs tests/collector.rs tests/common
+git add src/collector.rs src/lib.rs tests/collector.rs tests/common docs/project-log.md
 git -c user.name=shkolnik-beep -c user.email=shkolnik-beep commit -m "NVML collector: init once, retry per scrape, omit unsupported fields"
 ```
 
@@ -577,11 +586,13 @@ restart-after-upgrade = true
 Run: `cargo +stable install --locked cargo-deb@3.8.0 && cargo deb && dpkg-deb -I target/debian/nvml-exporter_0.1.0-1_amd64.deb && dpkg-deb -c target/debian/nvml-exporter_0.1.0-1_amd64.deb && dpkg-deb -e target/debian/nvml-exporter_0.1.0-1_amd64.deb /tmp/nvml-ctl && cat /tmp/nvml-ctl/conffiles /tmp/nvml-ctl/postinst && ldd target/release/nvml-exporter && ls -l target/release/nvml-exporter`
 Expected: `Depends: libc6 (>= ...)` and `libgcc-s1` at most, no nvidia package; conffiles lists `/etc/nvml-exporter/config.toml`; postinst contains `systemctl enable` and `start` fragments; `ldd` shows libc, libgcc_s, libm only; binary under 2 MB stripped.
 
-- [ ] **Step 8: Lint and commit**
+- [ ] **Step 8: Append the task entry to `docs/project-log.md`** (timestamp, task number and name, test count, notes; write `Commit: see this commit` since the sha is not known yet), then include it in the commit.
+
+- [ ] **Step 9: Lint and commit**
 
 ```bash
 cargo fmt --check && cargo clippy --all-targets -- -D warnings && cargo test --locked
-git add src/main.rs Cargo.toml Cargo.lock packaging tests/cli.rs tests/live.rs
+git add src/main.rs Cargo.toml Cargo.lock packaging tests/cli.rs tests/live.rs docs/project-log.md
 git -c user.name=shkolnik-beep -c user.email=shkolnik-beep commit -m "CLI once/check, Debian packaging with hardened unit"
 ```
 
@@ -635,12 +646,14 @@ Expected: a few MB RSS, well under 100 ms.
 
 Ask James for, with the exporter running later in Task 7's second spike round, `sudo systemctl restart nvidia-persistenced` and a scrape before and after; the `nvml_exporter_scrape_errors_total` and `nvml_up` lines tell whether the collector handled it. Record the outcome; if the driver cannot be made to fail safely on the card, say so in the log and leave the placeholders in `tests/live.rs` as documentation.
 
-- [ ] **Step 5: Record and commit**
+- [ ] **Step 5: Append the task entry to `docs/project-log.md`** (timestamp, task number and name, test count, notes; write `Commit: see this commit` since the sha is not known yet), then include it in the commit.
+
+- [ ] **Step 6: Record and commit**
 
 Write `docs/spike-log.md` with the date, the deb version, each command and its outcome, and the decisions taken (unit changes, any catalog correction, the `Clock::SM` versus `Graphics` reading if `nvidia-smi` disagrees). Update §6 of `docs/design.md` if the unit changed. Add an Amendments entry per ruling.
 
 ```bash
-git add docs/spike-log.md docs/design.md packaging docs/superpowers/plans/2026-10-20-nvml-exporter.md
+git add docs/spike-log.md docs/design.md packaging docs/superpowers/plans/2026-10-20-nvml-exporter.md docs/project-log.md
 git -c user.name=shkolnik-beep -c user.email=shkolnik-beep commit -m "Spike on the V100: NVML fields and unit hardening verified"
 ```
 
@@ -826,11 +839,13 @@ systemctl show -p MemoryCurrent nvml-exporter
 
 Then with `/etc/nvml-exporter/config.toml` set to `listen = "<VM address>:9835"` and `readers = ["192.0.2.1"]` and `sudo systemctl restart nvml-exporter`: `curl` from reader-host succeeds, `curl --max-time 3` from the sandbox VM (192.0.2.53) fails, loopback `curl` from the VM to its own LAN address is refused (expected per §11.4), `curl -s http://127.0.0.1:9835/` from the VM fails to connect (no loopback socket when `listen` is the LAN address), and the journal shows one `rejected` line for 192.0.2.53. Then the Task 6 step 4 driver-restart check. Record in `docs/spike-log.md`.
 
-- [ ] **Step 7: Lint and commit**
+- [ ] **Step 7: Append the task entry to `docs/project-log.md`** (timestamp, task number and name, test count, notes; write `Commit: see this commit` since the sha is not known yet), then include it in the commit.
+
+- [ ] **Step 8: Lint and commit**
 
 ```bash
 cargo fmt --check && cargo clippy --all-targets -- -D warnings && cargo test --locked
-git add src/http.rs src/main.rs src/lib.rs tests/http.rs tests/common docs/spike-log.md
+git add src/http.rs src/main.rs src/lib.rs tests/http.rs tests/common docs/spike-log.md docs/project-log.md
 git -c user.name=shkolnik-beep -c user.email=shkolnik-beep commit -m "HTTP server with reader allow-list; serve subcommand"
 ```
 
@@ -865,12 +880,14 @@ dependabot: cfab's file verbatim (cargo and github-actions, weekly). `tag-releas
 
 Sections: what it is (two paragraphs), install from pkg.jshkol.com (`apt install nvml-exporter`, note it is indexed after the first formal release), config (the three keys, the loopback default, the example for a LAN reader), endpoints, `once`/`check` usage, metrics (link `docs/metrics.md`), security posture (read-only, allow-list, no TLS, hardened unit), building and releasing (`cargo deb`, `scripts/tag-release.sh`, the dev channel), license.
 
-- [ ] **Step 5: Validate and commit**
+- [ ] **Step 5: Append the task entry to `docs/project-log.md`** (timestamp, task number and name, test count, notes; write `Commit: see this commit` since the sha is not known yet), then include it in the commit.
+
+- [ ] **Step 6: Validate and commit**
 
 Run: the YAML and bash checks from the Interfaces block; `cargo test --locked` still green.
 
 ```bash
-git add .github scripts README.md
+git add .github scripts README.md docs/project-log.md
 git -c user.name=shkolnik-beep -c user.email=shkolnik-beep commit -m "CI and release workflows (debian:trixie), dependabot, tag script, README"
 ```
 
@@ -895,7 +912,9 @@ Ask James to install `nvml-exporter-dev_amd64.deb` from the rolling `dev` releas
 
 `scripts/tag-release.sh --dry-run`, then with James's go-ahead `scripts/tag-release.sh`. Verify the formal release has the deb, the bare binary, `SHA256SUMS` and the attestation, and that the pkg repo received a `check-releases` run (James opens or merges the first `.redirect` PR by hand; onboarding is a trust decision, §7).
 
-- [ ] **Step 4: Update the resume note and commit**
+- [ ] **Step 4: Append the task entry to `docs/project-log.md`** (timestamp, task number and name, test count, notes; write `Commit: see this commit` since the sha is not known yet), then include it in the commit.
+
+- [ ] **Step 5: Update the resume note and commit**
 
 `AGENTS.md` §1: released v0.1.0, pkg onboarding state, next = the operator's config repo integration plan (design §9) in the the operator's config repo repo. Commit and push.
 
