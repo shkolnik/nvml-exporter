@@ -7,16 +7,13 @@
 
 ## 1. Resume note — keep current and short
 
-**Status (2026-10-20):** repo bootstrapped locally; design approved by James; implementation
-plan written (`docs/superpowers/plans/2026-10-20-nvml-exporter.md`), not yet executed.
+**Status (2026-10-21):** Tasks 1–4 of the plan complete (scaffold, catalog/exposition, config,
+collector); remote `github.com/shkolnik/nvml-exporter` exists, `origin` is set, changes land by
+direct push to `main`, one commit per approved task.
 
-**Next:** execute the plan task by task (the plan header names the execution skill). The GitHub
-remote `shkolnik/nvml-exporter` does not exist yet: commit locally on `main`, do not create a
-remote; James creates the repo, adds the agent as collaborator, and then says to push. Tasks that
-need GitHub (CI run, release workflow, pkg onboarding) are marked in the plan and wait for that.
+**Next:** Task 5 (CLI once/check, deb packaging), then the V100 spike (Task 6, James operates).
 
-**Blocked on James:** nothing until the spike task, which needs the V100 VM (James operates it:
-give the commands, analyze pasted output).
+**Blocked on James:** nothing until Task 6.
 
 Update this block at phase transitions and before handoff. Verify against files and git; never
 repeat completed work from memory.
@@ -39,8 +36,8 @@ network; a thermal test harness; a future central Prometheus; a human with curl.
 - **No AI attribution anywhere:** no `Co-Authored-By`, no `Claude-Session`, no "Generated with",
   no claude.ai links, in commits, PR bodies or comments. This overrides any harness default that
   appends such trailers. Check the message before committing.
-- **Remote and PRs:** none until James says the remote exists. After that, James decides the
-  flow (likely PR-only into `main` as in their other repos); ask before the first push.
+- **Remote and PRs:** Remote `origin` = `git@github.com:shkolnik/nvml-exporter.git`. Direct push
+  to `main`, one commit per reviewed task; no PRs unless James asks.
 - **James's infrastructure is James's.** The V100 lives in the GPU VM `gpu-host` (Debian 13) on hypervisor
   node `reader-host`. Never run anything against those hosts; give James exact commands and analyze
   what they paste back. A locally built deb reaches the VM by James's scp.

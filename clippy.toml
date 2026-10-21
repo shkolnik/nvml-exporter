@@ -16,7 +16,7 @@ disallowed-methods = [
     { path = "nvml_wrapper::Device::set_cpu_affinity", reason = "nvml-exporter is read-only; it never calls an NVML setter" },
     { path = "nvml_wrapper::Device::set_default_fan_speed", reason = "nvml-exporter is read-only; it never calls an NVML setter" },
     { path = "nvml_wrapper::Device::set_drain", reason = "nvml-exporter is read-only; it never calls an NVML setter" },
-    { path = "nvml_wrapper::Device::set_driver_model", reason = "nvml-exporter is read-only; it never calls an NVML setter" },
+    { path = "nvml_wrapper::Device::set_driver_model", reason = "nvml-exporter is read-only; it never calls an NVML setter", allow-invalid = true }, # Windows-only in nvml-wrapper 0.13
     { path = "nvml_wrapper::Device::set_ecc", reason = "nvml-exporter is read-only; it never calls an NVML setter" },
     { path = "nvml_wrapper::Device::set_fan_control_policy", reason = "nvml-exporter is read-only; it never calls an NVML setter" },
     { path = "nvml_wrapper::Device::set_fan_speed", reason = "nvml-exporter is read-only; it never calls an NVML setter" },
