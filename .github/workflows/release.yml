@@ -1,0 +1,174 @@
+name: release
+
+on:
+  push:
+    branches: [main]
+    tags: ["v*"]
+
+# Workflow level, never job level: a job-level `permissions:` REPLACES this block wholesale,
+# which would silently drop id-token/attestations and break the deb attestation below.
+permissions:
+  contents: write
+  id-token: write
+  attestations: write
+
+# Serialize per ref so rapid main pushes can't interleave the dev-release
+# delete/recreate. No cancel-in-progress: a half-cancelled publish could
+# leave the dev release absent.
+concurrency:
+  group: release-${{ github.ref }}
+
+env:
+  CARGO_TERM_COLOR: always
+
+defaults:
+  run:
+    shell: bash
+
+jobs:
+  build:
+    runs-on: ubuntu-latest
+    # Same container as CI: the glibc of the VM the deb is installed on.
+    container: debian:trixie
+    outputs:
+      channel: ${{ steps.meta.outputs.channel }}
+      ver: ${{ steps.meta.outputs.ver }}
+      deb_version: ${{ steps.meta.outputs.deb_version }}
+    steps:
+      - name: Install build dependencies
+        # git before checkout, or actions/checkout falls back to the REST API and leaves no .git.
+        run: |
+          apt-get update
+          apt-get install -y --no-install-recommends ca-certificates curl git build-essential pkg-config jq
+      - uses: actions/checkout@v7
+      - name: Trust the workspace
+        run: git config --global --add safe.directory "$GITHUB_WORKSPACE"
+      - name: Install rustup
+        run: |
+          curl --proto '=https' --tlsv1.2 -sSf https://sh.rustup.rs \
+            | sh -s -- -y --default-toolchain stable --profile minimal
+          echo "$HOME/.cargo/bin" >> "$GITHUB_PATH"
+      - name: Install the pinned toolchain
+        run: |
+          rustup toolchain install
+          rustup show
+      - name: Test
+        # A tag can point at a commit CI never checked; never publish untested.
+        run: cargo test --locked
+      - name: Install cargo-deb
+        # +stable: rustup otherwise warns that rust-toolchain.toml overrides the
+        # default toolchain for the install; the version is pinned so a
+        # cargo-deb release cannot change the package under us.
+        run: cargo +stable install --locked cargo-deb@3.8.0
+      - name: Resolve channel and version
+        id: meta
+        run: |
+          ver=$(cargo metadata --no-deps --format-version 1 | jq -er '.packages[0].version')
+          if [[ "$GITHUB_REF" == refs/tags/* ]]; then
+            tag="$GITHUB_REF_NAME"
+            if [ "$tag" != "v$ver" ]; then
+              echo "tag $tag does not match Cargo.toml version $ver (expected v$ver)" >&2
+              exit 1
+            fi
+            echo "channel=formal" >> "$GITHUB_OUTPUT"
+          else
+            echo "channel=dev" >> "$GITHUB_OUTPUT"
+            # ~dev sorts below the eventual formal release in Debian version
+            # order, and the run number orders dev builds among themselves.
+            echo "deb_version=${ver}~dev${GITHUB_RUN_NUMBER}+g${GITHUB_SHA::7}" >> "$GITHUB_OUTPUT"
+          fi
+          echo "ver=$ver" >> "$GITHUB_OUTPUT"
+      - name: Build Debian package
+        run: |
+          if [ "${{ steps.meta.outputs.channel }}" = formal ]; then
+            cargo deb
+          else
+            cargo deb --deb-version "${{ steps.meta.outputs.deb_version }}"
+          fi
+          dpkg-deb -I target/debian/*.deb
+      - name: Assemble assets
+        run: |
+          mkdir dist
+          if [ "${{ steps.meta.outputs.channel }}" = formal ]; then
+            cp target/debian/*.deb dist/
+            cp target/release/nvml-exporter dist/nvml-exporter-linux-x86_64
+          else
+            # Fixed asset name so the download URL is stable across pushes;
+            # the deb's internal version still identifies the exact build.
+            cp target/debian/*.deb dist/nvml-exporter-dev_amd64.deb
+          fi
+          ls -l dist
+      - uses: actions/upload-artifact@v7
+        with:
+          name: dist
+          path: dist/*
+          if-no-files-found: error
+
+  publish:
+    # On the runner, not in the container: gh and the attestation action live here.
+    runs-on: ubuntu-latest
+    needs: build
+    env:
+      GH_REPO: ${{ github.repository }}
+    steps:
+      - uses: actions/download-artifact@v7
+        with:
+          name: dist
+          path: dist
+      - name: Attest build provenance
+        # Runs before SHA256SUMS is added, so every file in dist/ is a
+        # build subject.
+        uses: actions/attest-build-provenance@v4
+        with:
+          subject-path: dist/*
+      - name: Publish formal release
+        if: needs.build.outputs.channel == 'formal'
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          (cd dist && sha256sum * > SHA256SUMS)
+          gh release create "$GITHUB_REF_NAME" dist/* \
+            --verify-tag \
+            --title "nvml-exporter $GITHUB_REF_NAME" \
+            --generate-notes
+      - name: Notify package repository
+        # Dispatches shkolnik/pkg's check-releases workflow, which opens a
+        # review PR proposing this release for the apt repo. The token is a
+        # fine-grained PAT scoped to Actions:write on that repo only — it can
+        # start the check, nothing else. Never fail a release over this: the
+        # pkg repo's weekly cron catches a missed dispatch.
+        if: needs.build.outputs.channel == 'formal'
+        continue-on-error: true
+        env:
+          GH_TOKEN: ${{ secrets.PKG_TRIGGER_TOKEN }}
+        # --ref is load-bearing: without it gh resolves the default branch over
+        # GraphQL (repository.defaultBranchRef), which a token scoped to
+        # Actions:write + Metadata:read cannot read, and the dispatch fails with
+        # "Resource not accessible by personal access token".
+        run: |
+          # Say which account the secret's token is and whether it can see the
+          # repo before dispatching, so a failure names the token, not the job.
+          echo "token account: $(gh api user --jq .login)"
+          echo "token sees: $(gh api repos/shkolnik/pkg --jq .full_name)"
+          gh workflow run check-releases.yml -R shkolnik/pkg --ref main
+      - name: Publish rolling dev release
+        if: needs.build.outputs.channel == 'dev'
+        env:
+          GH_TOKEN: ${{ github.token }}
+          DEB_VERSION: ${{ needs.build.outputs.deb_version }}
+        run: |
+          # Rolling: exactly one dev prerelease, replaced on every main push.
+          # Deletion is the literal tag "dev" only — never a pattern, so a
+          # v* tag can never match.
+          gh release delete dev --cleanup-tag --yes || true
+          {
+            echo "Rolling build of main, replaced on every push. Not a release."
+            echo
+            echo "Package version: $DEB_VERSION"
+            echo "Commit: $GITHUB_SHA"
+          } > notes.md
+          gh release create dev dist/nvml-exporter-dev_amd64.deb \
+            --prerelease \
+            --target "$GITHUB_SHA" \
+            --title "nvml-exporter dev (rolling)" \
+            --notes-file notes.md

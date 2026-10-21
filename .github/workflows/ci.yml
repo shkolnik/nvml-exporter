@@ -1,0 +1,72 @@
+name: CI
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+
+env:
+  CARGO_TERM_COLOR: always
+
+defaults:
+  run:
+    shell: bash
+
+jobs:
+  check:
+    runs-on: ubuntu-latest
+    # The VM's distribution: same glibc and the same toolchain path as the box that runs it.
+    container: debian:trixie
+    steps:
+      - name: Install build dependencies
+        # git before checkout, or actions/checkout falls back to the REST API and leaves no .git.
+        run: |
+          apt-get update
+          apt-get install -y --no-install-recommends ca-certificates curl git build-essential pkg-config
+      - uses: actions/checkout@v7
+      - name: Trust the workspace
+        # The checkout is owned by the runner's uid, not the container's root.
+        run: git config --global --add safe.directory "$GITHUB_WORKSPACE"
+      - name: Install rustup
+        # stable as the default so `cargo +stable install` below has a toolchain;
+        # rust-toolchain.toml selects the pinned one inside the checkout.
+        run: |
+          curl --proto '=https' --tlsv1.2 -sSf https://sh.rustup.rs \
+            | sh -s -- -y --default-toolchain stable --profile minimal
+          echo "$HOME/.cargo/bin" >> "$GITHUB_PATH"
+      - name: Install the pinned toolchain
+        # rustup >= 1.28 no longer installs the rust-toolchain.toml toolchain on `rustup show`.
+        run: |
+          rustup toolchain install
+          rustup show
+      - uses: actions/cache@v5
+        with:
+          path: |
+            ~/.cargo/registry
+            ~/.cargo/git
+            target
+          key: ${{ runner.os }}-trixie-${{ hashFiles('rust-toolchain.toml', 'Cargo.lock') }}
+      - name: Format
+        run: cargo fmt --check
+      - name: Clippy
+        run: cargo clippy --all-targets -- -D warnings
+      - name: Test
+        # The live GPU tests are #[ignore] and run only on the VM.
+        run: cargo test --locked
+      - name: Install cargo-deb
+        # On main pushes the release workflow builds the deb; this proves packaging before merge.
+        # +stable: rustup otherwise warns that rust-toolchain.toml overrides the
+        # default toolchain for the install; the version is pinned so a
+        # cargo-deb release cannot change the package under us.
+        if: github.event_name == 'pull_request'
+        run: cargo +stable install --locked cargo-deb@3.8.0
+      - name: Build Debian package
+        if: github.event_name == 'pull_request'
+        run: |
+          cargo deb
+          dpkg-deb -I target/debian/*.deb
+      - uses: actions/upload-artifact@v7
+        if: github.event_name == 'pull_request'
+        with:
+          name: nvml-exporter-deb
+          path: target/debian/*.deb
