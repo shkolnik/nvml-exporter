@@ -40,3 +40,10 @@ Commit: see this commit. Tests: 30 passed, 3 ignored. Notes: (1) GpuLost or Unin
 
 ## 2026-10-21T01:37Z — Scrub: home-network and personal details removed; history rewritten
 Commit: see this commit. Tests: 30 passed, 3 ignored. Notes: James's rule, now binding (AGENTS.md §3): no home or home-network detail (addresses, hostnames, VM ids, topology, lab operational notes) and no unnecessary personal information in the repo. By James's instruction, earlier entries in this log and docs/spike-log.md were redacted in place, the one exception to append-only; every measurement and conclusion is kept. RFC 5737 addresses stand in for the lab's (192.0.2.10 the GPU host, 192.0.2.1 the reader, 192.0.2.53 the refused peer); test CIDR fixtures moved to 198.51.100.0/24 and 203.0.113.0/24. CI now fails on any private-range address in the tree. The removed lab facts live in the maintainer's private research repo. The git history was rewritten with the same replacement map.
+
+## 2026-10-21T02:05Z — v0.1.1 released; history rewrite pushed; v0.1.0 removed
+Commit: see this commit. Notes: history rewritten with git filter-repo (text and messages) from the scrub
+map and force-pushed to main with James's authorization; CI and release green on the new head. James tagged
+v0.1.1 (deb sha e6aa22b8…74d8, attestation verifies); pkg PR 24 merged and the redirect is served. The
+v0.1.0 release and tag deleted on GitHub. James decided no GitHub support purge of orphaned commits is
+needed. Agent-side work for this phase is complete; James enables branch protection next.

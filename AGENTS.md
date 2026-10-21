@@ -7,15 +7,16 @@
 
 ## 1. Resume note — keep current and short
 
-**Status (2026-10-21):** plan executed through Task 9; v0.1.0 released from the formal release
-workflow; pkg onboarding pending James's first `.redirect` PR. Home-network and personal details
-scrubbed from the tree and the git history rewritten with the same map; v0.1.1 tag pending.
+**Status (2026-10-21):** v0.1.1 released from the formal release workflow and served by pkg.
+Home-network and personal details scrubbed from the tree and the git history rewritten; the
+pre-scrub v0.1.0 release and tag are deleted. Branch protection on `main` is James's next step.
 
-**Next:** 0.1.1 with the final-review fixes (committed, awaiting James's tag). Deployment
-automation lives in a separate, private repo and is not this repo's concern; this repo's agent
-stays focused on the utility itself (see §2 on its intended audience).
+**Next:** nothing in flight. Candidates for 0.1.x: the deferred minors from the final review
+(logged in `docs/project-log.md`), CONTRIBUTING, an issue template asking for `nvml-exporter once`
+output, a CHANGELOG. Deployment automation lives in a separate, private repo and is not this
+repo's concern; this repo's agent stays focused on the utility itself (see §2).
 
-**Blocked on James:** the pkg `.redirect` PR; the v0.1.1 tag (James tags; agents never push tags).
+**Blocked on James:** nothing. (Removing the v0.1.0 redirect from pkg is James's, in pkg.)
 
 Update this block at phase transitions and before handoff. Verify against files and git; never
 repeat completed work from memory.
