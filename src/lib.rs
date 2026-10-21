@@ -4,3 +4,4 @@ pub mod catalog;
 pub mod collector;
 pub mod config;
 pub mod expo;
+pub mod http;

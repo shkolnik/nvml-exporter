@@ -7,14 +7,13 @@
 
 ## 1. Resume note — keep current and short
 
-**Status (2026-10-21):** Tasks 1–6 of the plan complete; the V100 spike passed and the hardened
-unit ships unchanged (`docs/spike-log.md`); remote `github.com/shkolnik/nvml-exporter` exists, `origin` is set, changes land by
-direct push to `main`, one commit per approved task.
+**Status (2026-10-21):** Tasks 1–7 complete; both spike rounds passed (`docs/spike-log.md`);
+root SSH on gpu-host can be revoked (James rebuilds the VM).
 
-**Next:** Task 7 (HTTP server + `serve`; second spike round on the VM while root SSH lasts),
-then Task 8 CI/release, then Task 9 release, gated on James.
+**Next:** Task 8 (CI/release workflows, README), then Task 9 (first formal release, gated on
+James's go for the tag).
 
-**Blocked on James:** nothing until Task 9 (repo secret + Actions permissions).
+**Blocked on James:** nothing until the tag.
 
 Update this block at phase transitions and before handoff. Verify against files and git; never
 repeat completed work from memory.

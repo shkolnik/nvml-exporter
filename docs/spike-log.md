@@ -90,3 +90,54 @@ placeholders in `tests/live.rs` stay as documentation.
 - VM address is now 192.0.2.10 (DHCP); AGENTS.md §4 updated.
 - Allow-list test from reader-host (192.0.2.1) and the sandbox VM (192.0.2.53), plus the `ss`
   listener check, deferred to Task 7 step 6 (needs `serve`).
+- §8.4 verified end to end in round 2: reader-host served, the sandbox VM and the VM's own LAN address
+  refused, no loopback socket when `listen` is the LAN address.
+- The allow-list rejects before reading and logs once per peer address at info.
+- The ~55 ms `/metrics` latency is the 50 ms accept-poll interval: acceptable for the 1 Hz
+  consumer. A future tune would be a smaller sleep or a blocking accept with a self-pipe; out of
+  scope.
+
+## Round 2 — HTTP server (Task 7)
+
+2026-10-21 (VM clock Oct 20 20:01–20:04 local time). Run by the controller over root SSH on gpu-host; the
+reader-host curl run by James. Deb from commit e6c6f7f, sha256
+`91f38af72876717eea274afe5ee7b3f99c05eb64339d1a63c50cc740fbe85b8b` (version still 0.1.0-1).
+
+### A. Upgrade and service under the hardened unit, shipped loopback config
+
+- `dpkg -i` over the previous 0.1.0-1: "Unpacking ... over (0.1.0-1)"; postinst restarted the
+  unit. 1 s later `systemctl status`: active (running), Tasks 2, Memory 760K (peak 2M).
+- Journal, the only line (no NVML warning under the hardened unit):
+  `[INFO nvml_exporter] nvml-exporter 0.1.0 listening on 127.0.0.1:9835, readers [], collect_pcie false`.
+- `curl http://127.0.0.1:9835/health` → `nvml-exporter 0.1.0, nvml_up 1`.
+- `/metrics` excerpt: `nvml_up 1`, `nvml_exporter_rejected_connections_total 0`,
+  `nvml_memory_temperature_celsius{gpu="0"} 37`, `nvml_power_watts{gpu="0"} 27.326`. No
+  `nvml_exporter_scrape_errors_total` line at all: the `num_fans` gate is confirmed on the card
+  (fan series omitted, nothing counted).
+- `curl /nope` → 404. `ss -ltnp`: one socket, `127.0.0.1:9835`, owned by nvml-exporter.
+- After the scrapes: MemoryCurrent=15396864, MemoryPeak=15659008 (about 15.7 MB with
+  libnvidia-ml loaded).
+- Five `/metrics` latencies (`curl -w %{time_total}`): 0.0245, 0.0529, 0.0585, 0.0553, 0.0579 s.
+  These are dominated by the 50 ms sleep between accept polls (design §4.3); fine for 1 Hz.
+
+### B. LAN listen and allow-list (design §8.4, §11.4)
+
+- Config `listen = "192.0.2.10:9835"`, `readers = ["192.0.2.1"]`; `nvml-exporter check`:
+  `listen = 192.0.2.10:9835`, `readers = [192.0.2.1/32]`, `collect_pcie = false`. After
+  restart: active; journal `listening on 192.0.2.10:9835, readers [192.0.2.1/32], collect_pcie false`.
+- `ss -ltn`: only `192.0.2.10:9835`; no loopback socket.
+- Peers:
+  - reader-host (192.0.2.1): `nvml-exporter 0.1.0, nvml_up 1`, exit 0.
+  - sandbox (192.0.2.53): empty, curl exit 56; journal
+    `rejected connection from 192.0.2.53 (not in readers)`.
+  - loopback from the VM (`127.0.0.1:9835`): curl exit 7, connection refused (no socket).
+  - the VM to its own LAN address: curl exit 56 (closed before any response); journal, once:
+    `[INFO nvml_exporter::http] rejected connection from 192.0.2.10 (not in readers)`.
+- Config restored to the shipped loopback default and restarted: active, `127.0.0.1:9835` only,
+  rejected counter 0 in the new process (the counter lasts for the process lifetime).
+
+### Not exercised
+
+- SIGTERM via `systemctl stop` during an in-flight scrape was not timed separately; two
+  `systemctl restart`s each completed within the 1 s sleep (clean shutdown works under systemd).
+- Error paths (Review Focus 5): still not exercisable on the card.
